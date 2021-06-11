@@ -152,7 +152,8 @@ class SaxNgram(_PanelToPanelTransformer):
                 
                 # Discretizing each window into a word
                 words = [self._create_word(window) for window in windows_appr]
-            
+                
+                # TODO n-grams without superposition
                 # Counting the frequency of each n-gram for each window length  
                 for n in self.features.get_ngrams_remaining(window_length):
                     dict_aux = dict()
@@ -160,7 +161,7 @@ class SaxNgram(_PanelToPanelTransformer):
                         feature_id = [str(word_length), str(n)]
                         ngram = ' '.join(feature_id+words[i:i+n])
                         dict_aux[ngram] = dict_aux.get(ngram,0) + 1
-                    _has_frequent_features = (np.asarray(list(dict_aux.values()))>0).any()
+                    _has_frequent_features = (np.asarray(list(dict_aux.values()))>2).any()
                     if(_has_frequent_features):
                         for key, value in dict_aux.items():
                             histogram[key] = value

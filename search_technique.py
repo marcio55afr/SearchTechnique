@@ -39,7 +39,7 @@ class SearchTechnique(BaseClassifier):
                  window_prop = .5,
                  dimension_reduction_prop=.80,
                  alphabet_size=4,
-                 initial_sample_size=2,
+                 initial_sample_per_class=2,
                  random_state=None):
         
         self.max_series_length = max_series_length
@@ -47,7 +47,7 @@ class SearchTechnique(BaseClassifier):
         self.window_prop = window_prop
         self.dimension_reduction_prop = dimension_reduction_prop
         self.alphabet_size = alphabet_size
-        self.initial_sample_size = initial_sample_size
+        self.initial_sample_per_class = initial_sample_per_class
         self.random_state = random_state
         
         self.features = NgramFeatures(self.max_series_length,
@@ -63,24 +63,43 @@ class SearchTechnique(BaseClassifier):
         
     def fit(self, data, labels):
         
-        bags = self._transformer.fit_transform(data)
-        dfs = pd.DataFrame([])
+        data_length,_ = data.shape
+        # TODO check class column
+        classes = labels.unique()
+        n_classes = classes.size
+        sample_size = self.initial_sample_per_class
+        # TODO other types of selection
+        # random selection over all data
+        _finished = False
+        while(not _finished):
+
+            samples = self._get_samples(sample_size, classes, labels)
+            
+            bags = self._transformer.fit_transform(data.iloc[samples,:])
+            dfs = pd.DataFrame([])
+            
+            i=0
+            for bag in bags:
+                
+                df = pd.DataFrame.from_dict(bag, orient='index')
+                df = df.reset_index()
+                df['feature'] = [ ' '.join(word.split(' ')[0:2]) for word in df['index']]
+                df.columns = ['word', 'frequency', 'feature']
+                df['sample'] = i
+                df['total'] = df.shape[0]
+                
+                dfs = pd.concat([dfs,df], axis=0, join='outer')
+                
+                i+=1
+            
+                        
+            if( n_classes*sample_size > data_length ):
+                _finished = True
+            
+            # TODO test this parameter of half parameters double samples
+            sample_size *= 2
+            #return dfs
         
-        i=0
-        for bag in bags:
-            
-            df = pd.DataFrame.from_dict(bag, orient='index')
-            df = df.reset_index()
-            df['feature'] = [ ' '.join(word.split(' ')[0:2]) for word in df['index']]
-            df.columns = ['word', 'frequency', 'feature']
-            df['sample'] = i
-            df['total'] = df.shape[0]
-            
-            dfs = pd.concat([dfs,df], axis=0, join='outer')
-            
-            i+=1
-        
-        return dfs
     
     def predict_proba(self):
         return .0
@@ -88,5 +107,17 @@ class SearchTechnique(BaseClassifier):
     def predict(self):
         return 0
     
+    def _get_samples(self, sample_size, classes, labels):
+        
+        samples = pd.Series([])
+        for c in classes:
+            # TODO get classes column name
+            # TODO random State, replication of experiments
+            index = pd.Series(labels[labels==c].index)
+            s = index.sample(sample_size)
+            samples.append(s)
+        
+        return samples
+        
     def _get_histogram(self):
         return pd.DataFrame([])

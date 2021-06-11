@@ -12,14 +12,12 @@ from search_technique import SearchTechnique
 
 def extract():
     df_train = pd.read_hdf('AtrialFibrillation', key='train')
-    
-    ts1 = df_train.iloc[0,0].values
-    ts2 = df_train.iloc[1,0].values
+    labels = df_train.iloc[:,-1]
     
     time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[:,0]])
     print(time_series)
     st = SearchTechnique(640)
-    fit = st.fit(time_series, [0])
+    fit = st.fit(time_series, labels)
     print(sum(fit['frequency']))
     
     fit.to_csv('df.csv')
@@ -71,7 +69,7 @@ def test_all():
     plot_Distribution()
     plot_ZipfsLaw()
 
-plot_ZipfsLaw()
+extract()
 
 
 
