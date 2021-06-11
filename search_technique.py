@@ -63,7 +63,24 @@ class SearchTechnique(BaseClassifier):
         
     def fit(self, data, labels):
         
-        return self._transformer.fit_transform(data)
+        bags = self._transformer.fit_transform(data)
+        dfs = pd.DataFrame([])
+        
+        i=0
+        for bag in bags:
+            
+            df = pd.DataFrame.from_dict(bag, orient='index')
+            df = df.reset_index()
+            df['feature'] = [ ' '.join(word.split(' ')[0:2]) for word in df['index']]
+            df.columns = ['word', 'frequency', 'feature']
+            df['sample'] = i
+            df['total'] = df.shape[0]
+            
+            dfs = pd.concat([dfs,df], axis=0, join='outer')
+            
+            i+=1
+        
+        return dfs
     
     def predict_proba(self):
         return .0

@@ -160,7 +160,7 @@ class SaxNgram(_PanelToPanelTransformer):
                         feature_id = [str(word_length), str(n)]
                         ngram = ' '.join(feature_id+words[i:i+n])
                         dict_aux[ngram] = dict_aux.get(ngram,0) + 1
-                    _has_frequent_features = (np.asarray(list(dict_aux.values()))>1).any()
+                    _has_frequent_features = (np.asarray(list(dict_aux.values()))>0).any()
                     if(_has_frequent_features):
                         for key, value in dict_aux.items():
                             histogram[key] = value
