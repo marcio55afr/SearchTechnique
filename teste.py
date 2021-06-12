@@ -18,9 +18,9 @@ def extract():
     print(time_series)
     st = SearchTechnique(640)
     fit = st.fit(time_series, labels)
-    print(sum(fit['frequency']))
+    #print(sum(fit['frequency']))
     
-    fit.to_csv('df.csv')
+    #fit.to_csv('df.csv')
     
 def plot_Distribution():
     fit = pd.read_csv('df.csv')

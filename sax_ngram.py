@@ -117,8 +117,7 @@ class SaxNgram(_PanelToPanelTransformer):
             window_lengths = self.features.get_window_lengths_list(series_length)
             for window_length in window_lengths:
                 
-                print(window_length)
-                print('size of the bag: ', sys.getsizeof(histogram))
+                print(window_length, end=' ')
             
                 # taking all sliding windows fixed on one set of parameter       
                 num_windows = series_length - window_length + 1
@@ -166,7 +165,8 @@ class SaxNgram(_PanelToPanelTransformer):
                         for key, value in dict_aux.items():
                             histogram[key] = value
                 
-                
+            
+            print('size of the bag: ', sys.getsizeof(histogram))
             # Group the histograms of all samples
             histograms.append(histogram)
         return histograms

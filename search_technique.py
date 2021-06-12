@@ -73,7 +73,9 @@ class SearchTechnique(BaseClassifier):
         _finished = False
         while(not _finished):
 
+            # TODO unbalanced classes
             samples = self._get_samples(sample_size, classes, labels)
+            print('\n\n sample size: {}'.format(samples.size))
             
             bags = self._transformer.fit_transform(data.iloc[samples,:])
             dfs = pd.DataFrame([])
@@ -114,8 +116,12 @@ class SearchTechnique(BaseClassifier):
             # TODO get classes column name
             # TODO random State, replication of experiments
             index = pd.Series(labels[labels==c].index)
+            if(sample_size > index.size):
+                samples = samples.append(index)
+                continue
+            
             s = index.sample(sample_size)
-            samples.append(s)
+            samples = samples.append(s)
         
         return samples
         
