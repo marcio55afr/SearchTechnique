@@ -10,16 +10,15 @@ import matplotlib.pyplot as plt
 
 from search_technique import SearchTechnique
 
-def extract():
-    df_train = pd.read_hdf('AtrialFibrillation', key='train')
-    labels = df_train.iloc[:,-1]
-    
-    time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[:,0]])
-    print(time_series)
-    st = SearchTechnique(640)
-    fit = st.fit(time_series, labels)
-    #print(sum(fit['frequency']))
-    
+#def extract():
+df_train = pd.read_hdf('AtrialFibrillation', key='train')
+labels = df_train.iloc[:,-1]
+
+time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[0:6,0]])
+print(time_series)
+st = SearchTechnique(640)
+dfs = st.fit(time_series, labels[0:6])
+#return dfs
     #fit.to_csv('df.csv')
     
 def plot_Distribution():
@@ -65,11 +64,11 @@ def plot_ZipfsLaw():
 
 def test_all():
     
-    extract()
+    #extract()
     plot_Distribution()
     plot_ZipfsLaw()
 
-extract()
+#dfs = extract()
 
 
 

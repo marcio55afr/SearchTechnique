@@ -5,6 +5,7 @@ from sktime.classification.base import BaseClassifier
 
 from sax_ngram import SaxNgram
 from ngram_features import NgramFeatures
+from collections import Counter
 
 
 __all__ = ["SearchTechnique"]
@@ -75,32 +76,50 @@ class SearchTechnique(BaseClassifier):
 
             # TODO unbalanced classes
             samples = self._get_samples(sample_size, classes, labels)
-            print('\n\n sample size: {}'.format(samples.size))
+            N = samples.size
+            print('\n\n sample size: {}'.format(N))
             
             bags = self._transformer.fit_transform(data.iloc[samples,:])
             dfs = pd.DataFrame([])
             
             i=0
-            for bag in bags:
-                
-                df = pd.DataFrame.from_dict(bag, orient='index')
+            for sample in samples:
+                # TODO separate the words from the meta informations
+                df = pd.DataFrame.from_dict(bags[i], orient='index')
                 df = df.reset_index()
                 df['feature'] = [ ' '.join(word.split(' ')[0:2]) for word in df['index']]
                 df.columns = ['word', 'frequency', 'feature']
-                df['sample'] = i
+                df['sample'] = sample
                 df['total'] = df.shape[0]
+                df['tf'] = df['frequency']/df['total']
+                df.index.names = ['index']
+                df = df.reset_index().set_index(['sample','index'])
                 
                 dfs = pd.concat([dfs,df], axis=0, join='outer')
                 
                 i+=1
             
-                        
-            if( n_classes*sample_size > data_length ):
+            dfs['tf_idf'] = 0
+            df = Counter(dfs['word'])
+            for sample in samples:
+                i = 0
+                while True:
+                    try:
+                        row = dfs.loc[(sample, i)]
+                    except:
+                        break
+                    word = row['word']                    
+                    tf = row['tf']
+                    idf = np.log2(N/(df[word]+1))
+                    dfs.loc[(sample, i),'tf_idf'] = tf*idf
+                    i+=1
+
+            if( samples.size == labels.size ):
                 _finished = True
             
             # TODO test this parameter of half parameters double samples
             sample_size *= 2
-            #return dfs
+        return dfs
         
     
     def predict_proba(self):

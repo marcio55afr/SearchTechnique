@@ -153,6 +153,7 @@ class SaxNgram(_PanelToPanelTransformer):
                 words = [self._create_word(window) for window in windows_appr]
                 
                 # TODO n-grams without superposition
+                # TODO Optimizes to a array of string the use Counter to make a dictionary
                 # Counting the frequency of each n-gram for each window length  
                 for n in self.features.get_ngrams_remaining(window_length):
                     dict_aux = dict()
