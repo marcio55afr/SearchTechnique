@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 
 
-class NgramFeatures(object):
+class NgramResolution(object):
     
     def __init__(self, max_series_length, min_window_length, window_prop):
         
@@ -20,26 +20,34 @@ class NgramFeatures(object):
         window_lengths_list = self._generate_window_lengths(self.min_window_length,
                                                             self.max_window_length)
                 
-        self.parameters_matrix = pd.DataFrame(-1,
+        self.resolutions_matrix = pd.DataFrame(-1,
                                               index=np.arange(1,self.max_ngrams),
                                               columns = window_lengths_list,
                                               dtype=int )
         
         for window in window_lengths_list:
             num_ngrams_max = (self.max_window_length//window)
-            self.parameters_matrix.loc[0:num_ngrams_max,window] = 1
+            self.resolutions_matrix.loc[0:num_ngrams_max,window] = 1
             
     def get_ngrams_remaining(self, window_length):
         
-        remaining = self.parameters_matrix[window_length] == 1
-        return self.parameters_matrix.loc[remaining,
+        remaining = self.resolutions_matrix[window_length] == 1
+        return self.resolutions_matrix.loc[remaining,
                                           window_length].index
     
     def get_window_lengths_list(self, series_length):
         
-        windows = self.parameters_matrix.columns
+        windows = self.resolutions_matrix.columns
         selecting_windows = windows <= series_length*self.window_prop
         return windows[selecting_windows].to_list()
+    
+    def remove(self, resolutions):
+        
+        for resolution in resolutions:
+            window_length, ngram_length = resolution.split(' ')
+            window_length = int( window_length)
+            ngram_length = int(ngram_length)
+            self.resolutions_matrix.loc[ngram_length, window_length] = 0
         
     def _generate_window_lengths(self,min_length ,max_length):
         

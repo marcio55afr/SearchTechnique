@@ -4,7 +4,6 @@ import pandas as pd
 from sktime.classification.base import BaseClassifier
 
 from sax_ngram import SaxNgram
-from ngram_features import NgramFeatures
 from collections import Counter
 
 
@@ -51,12 +50,8 @@ class SearchTechnique(BaseClassifier):
         self.initial_sample_per_class = initial_sample_per_class
         self.random_state = random_state
         
-        self.features = NgramFeatures(self.max_series_length,
-                                 self.min_window_length,
-                                 self.window_prop)
-        
         # Variables
-        self._transformer = SaxNgram(self.features,
+        self._transformer = SaxNgram(self.max_series_length,
                                      self.min_window_length,
                                      self.window_prop,
                                      self.dimension_reduction_prop,
@@ -87,8 +82,8 @@ class SearchTechnique(BaseClassifier):
                 # TODO separate the words from the meta informations
                 df = pd.DataFrame.from_dict(bags[i], orient='index')
                 df = df.reset_index()
-                df['feature'] = [ ' '.join(word.split(' ')[0:2]) for word in df['index']]
-                df.columns = ['word', 'frequency', 'feature']
+                df.columns = ['word', 'frequency']
+                df['resolution'] = [ ' '.join(word.split(' ')[0:2]) for word in df['word']]
                 df['sample'] = sample
                 df['total'] = df.shape[0]
                 df['tf'] = df['frequency']/df['total']
@@ -125,15 +120,17 @@ class SearchTechnique(BaseClassifier):
             dfs = dfs.reset_index()
             dfs = dfs.sort_values('tf_idf')
             
-            all_features = dfs[['feature','tf_idf']].groupby('feature').max()
-            all_features = all_features.sort_values('tf_idf')
+            last_resolutions = dfs[['resolution','tf_idf']].groupby('resolution').max()
+            last_resolutions = last_resolutions.sort_values('tf_idf').index
+            print('last set of resolutions:')
+            print(last_resolutions)
             
-            worst_features = self._half_split(all_features)
-            
-            #worst_features = worst_words.groupby('feature')
-            if(worst_features.size == dfs['feature'].unique().size):
-                raise 'The worst features comprehense all the features \
-                        Should count the frequency of each of them'
+            last_worst_resolutions = self._half_split(last_resolutions)
+            if(last_worst_resolutions.size == dfs['resolution'].unique().size):
+                raise 'The worst resolutions comprehense all the resolution \
+                        isntead of half of resolutions'
+                        
+            self._transformer.remove_resolutions(last_worst_resolutions)
 
         return dfs
         

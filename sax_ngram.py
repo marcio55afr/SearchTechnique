@@ -5,6 +5,7 @@ from sktime.transformations.base import _PanelToPanelTransformer
 from sktime.utils.validation.panel import check_X
 from sktime.transformations.panel.dictionary_based import PAA
 
+from ngram_resolution import NgramResolution
 
 import numpy as np
 import pandas as pd
@@ -60,21 +61,24 @@ class SaxNgram(_PanelToPanelTransformer):
     '''
 
     def __init__(self,
-                 features,
+                 max_series_length,
                  min_window_length,
-                 max_window_prop,
+                 window_prop,
                  dimension_reduction_prop,
                  alphabet_size,
                  normalize=True):
         # Attributes
+        self.max_series_length = max_series_length
         self.min_window_length = min_window_length
-        self.max_window_prop = max_window_prop
+        self.window_prop = window_prop
         self.dimension_reduction_prop = dimension_reduction_prop
         self.alphabet_size = alphabet_size
         self.normalize = normalize
+        self.resolution = NgramResolution(self.max_series_length,
+                                          self.min_window_length,
+                                          self.window_prop)
         
         # Local variables
-        self.features = features
         self._breakpoints = []
         self._alphabet = []
     
@@ -114,7 +118,7 @@ class SaxNgram(_PanelToPanelTransformer):
             histogram = dict()
             
             # Multiple resolutions using various windows lenghts
-            window_lengths = self.features.get_window_lengths_list(series_length)
+            window_lengths = self.resolution.get_window_lengths_list(series_length)
             for window_length in window_lengths:
                 
                 print(window_length, end=' ')
@@ -154,12 +158,12 @@ class SaxNgram(_PanelToPanelTransformer):
                 
                 # TODO n-grams without superposition
                 # TODO Optimizes to a array of string the use Counter to make a dictionary
-                # Counting the frequency of each n-gram for each window length  
-                for n in self.features.get_ngrams_remaining(window_length):
+                # Counting the frequency of each n-gram for each window length
+                for n in self.resolution.get_ngrams_remaining(window_length):
                     dict_aux = dict()
                     for i in range(num_windows -n +1):
-                        feature_id = [str(word_length), str(n)]
-                        ngram = ' '.join(feature_id+words[i:i+n])
+                        resolution_id = [str(window_length), str(n)]
+                        ngram = ' '.join(resolution_id+words[i:i+n])
                         dict_aux[ngram] = dict_aux.get(ngram,0) + 1
                     _has_frequent_features = (np.asarray(list(dict_aux.values()))>2).any()
                     if(_has_frequent_features):
@@ -171,6 +175,9 @@ class SaxNgram(_PanelToPanelTransformer):
             # Group the histograms of all samples
             histograms.append(histogram)
         return histograms
+    
+    def remove_resolutions(self, resolutions):
+        self.resolution.remove(resolutions)
     
     def _create_word(self, window):
         '''
