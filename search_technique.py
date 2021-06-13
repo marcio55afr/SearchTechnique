@@ -99,6 +99,7 @@ class SearchTechnique(BaseClassifier):
                 
                 i+=1
             
+            # TODO remove from N the 'documents' from the same class
             dfs['tf_idf'] = 0
             df = Counter(dfs['word'])
             for sample in samples:
@@ -119,9 +120,25 @@ class SearchTechnique(BaseClassifier):
             
             # TODO test this parameter of half parameters double samples
             sample_size *= 2
+                        
+            # TODO test selecting half of parameters or half of the words
+            dfs = dfs.reset_index()
+            dfs = dfs.sort_values('tf_idf')
+            
+            all_features = dfs[['feature','tf_idf']].groupby('feature').max()
+            all_features = all_features.sort_values('tf_idf')
+            
+            worst_features = self._half_split(all_features)
+            
+            #worst_features = worst_words.groupby('feature')
+            if(worst_features.size == dfs['feature'].unique().size):
+                raise 'The worst features comprehense all the features \
+                        Should count the frequency of each of them'
+
         return dfs
         
-    
+     
+        
     def predict_proba(self):
         return .0
     
@@ -146,3 +163,42 @@ class SearchTechnique(BaseClassifier):
         
     def _get_histogram(self):
         return pd.DataFrame([])
+    
+    def _half_split(self, data, part='first'):
+        
+        half = len(data)//2
+        
+        if(part=='first'):
+            return data[:half]
+        
+        elif(part=='second'):
+            return data[half:]
+
+        raise 'The function _half_split can only return the first or second part'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
