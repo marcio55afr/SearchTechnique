@@ -60,26 +60,28 @@ class SearchTechnique(BaseClassifier):
     def fit(self, data, labels):
         
         data_length,_ = data.shape
-        # TODO check class column
+        # TODO check number of samples and labels
         classes = labels.unique()
-        n_classes = classes.size
         sample_size = self.initial_sample_per_class
         # TODO other types of selection
         # random selection over all data
-        _finished = False
-        while(not _finished):
+        while(True):
 
             # TODO unbalanced classes
             samples = self._get_samples(sample_size, classes, labels)
             N = samples.size
-            print('\n\n sample size: {}'.format(N))
+            print('\nTransforming the series..')
+            print('\nsample size: {}'.format(N))
             
+            # TODO make the transformation multivariable!!!! important
             bags = self._transformer.fit_transform(data.iloc[samples,:])
             dfs = pd.DataFrame([])
             
+            print('\nCalculating the tf of each word..\n')
             i=0
             for sample in samples:
                 # TODO separate the words from the meta informations
+                # for speed up
                 df = pd.DataFrame.from_dict(bags[i], orient='index')
                 df = df.reset_index()
                 df.columns = ['word', 'frequency']
@@ -94,32 +96,40 @@ class SearchTechnique(BaseClassifier):
                 
                 i+=1
             
+            print('\nCalculating the tf idf of each word..')
             # TODO remove from N the 'documents' from the same class
             dfs['tf_idf'] = 0
-            df = Counter(dfs['word'])
+            docs_freqs = pd.Series(Counter(dfs['word']))
+            i=0
+            i_max = samples.size
             for sample in samples:
-                i = 0
-                while True:
-                    try:
-                        row = dfs.loc[(sample, i)]
-                    except:
-                        break
-                    word = row['word']                    
-                    tf = row['tf']
-                    idf = np.log2(N/(df[word]+1))
-                    dfs.loc[(sample, i),'tf_idf'] = tf*idf
-                    i+=1
+                i+=1
+                if(i > (i_max/10)):
+                    print('#',end=' ')
+                    i -= i_max//10
+                
+                df = dfs.loc[sample].sort_values('word')
+                tf = df['tf']
+                words = df['word']
+                
+                doc_freq = docs_freqs[words]
+                idf = np.log2(N/(doc_freq+1))
+                
+                dfs.loc[sample,'tf_idf'] = tf*idf
 
             if( samples.size == labels.size ):
-                _finished = True
+                print('\n\nAll samples were processed!')
+                break
             
             # TODO test this parameter of half parameters double samples
+            # with other proportions like 1/3 3* or sum with fixed buckets
             sample_size *= 2
-                        
-            # TODO test selecting half of parameters or half of the words
+
             dfs = dfs.reset_index()
             dfs = dfs.sort_values('tf_idf')
-            
+
+            print('\nRemoving worst resolutions found in this interation')
+            # TODO compare half of parameters against half of the words
             last_resolutions = dfs[['resolution','tf_idf']].groupby('resolution').max()
             last_resolutions = last_resolutions.sort_values('tf_idf').index
             print('last set of resolutions:')
@@ -129,7 +139,9 @@ class SearchTechnique(BaseClassifier):
             if(last_worst_resolutions.size == dfs['resolution'].unique().size):
                 raise 'The worst resolutions comprehense all the resolution \
                         isntead of half of resolutions'
-                        
+            
+            # TODO Vote system to down vote
+            # necessarily to up vote in other versions of ST
             self._transformer.remove_resolutions(last_worst_resolutions)
 
         return dfs
@@ -146,7 +158,6 @@ class SearchTechnique(BaseClassifier):
         
         samples = pd.Series([])
         for c in classes:
-            # TODO get classes column name
             # TODO random State, replication of experiments
             index = pd.Series(labels[labels==c].index)
             if(sample_size > index.size):

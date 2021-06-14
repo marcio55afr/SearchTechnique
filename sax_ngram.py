@@ -81,6 +81,7 @@ class SaxNgram(_PanelToPanelTransformer):
         # Local variables
         self._breakpoints = []
         self._alphabet = []
+        self._frequency_thereshold = 2
     
     def transform(self, data):
         '''
@@ -100,6 +101,7 @@ class SaxNgram(_PanelToPanelTransformer):
         '''
         
         # TODO check for others types of data and handle each of them
+        # TODO decide process multivariate data or not!!! important
         data = check_X(data, enforce_univariate=True, coerce_to_pandas=True)
         data = data.squeeze(1)
         
@@ -157,7 +159,7 @@ class SaxNgram(_PanelToPanelTransformer):
                 words = [self._create_word(window) for window in windows_appr]
                 
                 # TODO n-grams without superposition
-                # TODO Optimizes to a array of string the use Counter to make a dictionary
+                # TODO Optimizes to a array of string then use Counter to make a dictionary
                 # Counting the frequency of each n-gram for each window length
                 for n in self.resolution.get_ngrams_remaining(window_length):
                     dict_aux = dict()
@@ -165,8 +167,12 @@ class SaxNgram(_PanelToPanelTransformer):
                         resolution_id = [str(window_length), str(n)]
                         ngram = ' '.join(resolution_id+words[i:i+n])
                         dict_aux[ngram] = dict_aux.get(ngram,0) + 1
-                    _has_frequent_features = (np.asarray(list(dict_aux.values()))>2).any()
-                    if(_has_frequent_features):
+                    # TODO vote system or remove the resolution with no advantages
+                    features_up_threshold = np.asarray(list(dict_aux.values())) > self._frequency_thereshold
+                    # Verifies the existence of frenquenty features
+                    # if yes - adds all features into the bag of words of the series
+                    # TODO discover if it is possible add only the frequent words...
+                    if(features_up_threshold.any()):
                         for key, value in dict_aux.items():
                             histogram[key] = value
                 
