@@ -76,7 +76,7 @@ class SearchTechnique(BaseClassifier):
         total_samples,_ = data.shape
         total_labels = len(labels)
         if(total_samples != total_labels):
-            raise 'The number of samples and labels must the same'
+            raise 'The number of samples and labels must be the same'
             
         
         # Initializating the iteration
