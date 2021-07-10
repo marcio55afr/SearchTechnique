@@ -1,3 +1,4 @@
+import random
 import math
 import numpy as np
 import pandas as pd
@@ -24,12 +25,20 @@ class SearchTechnique(BaseClassifier):
     ----------
     
     initial_sample_size:    int, default = 2
-                    size for the inicial sampling for each class to start
-                    the searching, values between [...]
+                            size for the inicial sampling for each class to start
+                            the searching, values between [...]
+    
+    unbalanced_classes:   boolean, default = True   
+                    define the proportion of samples with different classes to
+                    create a group of samples. If False, this group will have
+                    initial_sample_size * number of classes inside the data.
+                    If True, the proportion of classes in group will be the same
+                    as in data. The smallest number of a class is defined by
+                    initial_sample_size.
     
     random_state:   int, default = None
-                    seed for the random functions
-
+                    seed for the random functions.
+                    
     '''
 
 
@@ -40,6 +49,7 @@ class SearchTechnique(BaseClassifier):
                  dimension_reduction_prop=.80,
                  alphabet_size=4,
                  initial_sample_per_class=2,
+                 unbalanced_classes = True,
                  random_state=None):
         
         self.max_series_length = max_series_length
@@ -48,6 +58,7 @@ class SearchTechnique(BaseClassifier):
         self.dimension_reduction_prop = dimension_reduction_prop
         self.alphabet_size = alphabet_size
         self.initial_sample_per_class = initial_sample_per_class
+        self.unbalanced_classes = unbalanced_classes
         self.random_state = random_state
         
         # Variables
@@ -56,30 +67,45 @@ class SearchTechnique(BaseClassifier):
                                      self.window_prop,
                                      self.dimension_reduction_prop,
                                      self.alphabet_size)
+        self._sample_multiplier = 2
+        self._iteration_limit = None
         
     def fit(self, data, labels):
         
-        data_length,_ = data.shape
-        # TODO check number of samples and labels
+        # Check the number of samples and labels
+        total_samples,_ = data.shape
+        total_labels = len(labels)
+        if(total_samples != total_labels):
+            raise 'The number of samples and labels must the same'
+            
+        
+        # Initializating the iteration
         classes = labels.unique()
         sample_size = self.initial_sample_per_class
-        # TODO other types of selection
-        # random selection over all data
+        
+        # Calculating the number of iterations
+        self._calcule_iteration_limit(labels, classes)
+        
+        seed_list = self._generate_random_list(labels, classes)
+
+        iteration = 0
         while(True):
+            iteration += 1
 
             # TODO unbalanced classes
-            samples = self._get_samples(sample_size, classes, labels)
-            N = samples.size
+            samples_id = self._get_samples_id(sample_size, classes, labels, seed = seed_list[iteration-1])
+            N = samples_id.size
             print('\nTransforming the series..')
+            self._transformer.show_resoltuion()
             print('\nsample size: {}'.format(N))
             
             # TODO make the transformation multivariable!!!! important
-            bags = self._transformer.fit_transform(data.iloc[samples,:])
+            bags = self._transformer.fit_transform(data.iloc[samples_id,:])
             dfs = pd.DataFrame([])
             
             print('\nCalculating the tf of each word..\n')
             i=0
-            for sample in samples:
+            for sample in samples_id:
                 # TODO separate the words from the meta informations
                 # for speed up
                 df = pd.DataFrame.from_dict(bags[i], orient='index')
@@ -96,13 +122,15 @@ class SearchTechnique(BaseClassifier):
                 
                 i+=1
             
+            print('\nBag of Words')
+            print(dfs[['word','frequency']])
             print('\nCalculating the tf idf of each word..')
             # TODO remove from N the 'documents' from the same class
             dfs['tf_idf'] = 0
             docs_freqs = pd.Series(Counter(dfs['word']))
             i=0
-            i_max = samples.size
-            for sample in samples:
+            i_max = samples_id.size
+            for sample in samples_id:
                 i+=1
                 if(i > (i_max/10)):
                     print('#',end=' ')
@@ -117,23 +145,23 @@ class SearchTechnique(BaseClassifier):
                 
                 dfs.loc[sample,'tf_idf'] = tf*idf
 
-            if( samples.size == labels.size ):
+            if( samples_id.size == total_samples ):
                 print('\n\nAll samples were processed!')
                 break
             
             # TODO test this parameter of half parameters double samples
             # with other proportions like 1/3 3* or sum with fixed buckets
-            sample_size *= 2
+            sample_size *= self._sample_multiplier
 
             dfs = dfs.reset_index()
             dfs = dfs.sort_values('tf_idf')
 
-            print('\nRemoving worst resolutions found in this interation')
+            print('\nRemoving worst resolutions found in this iteration')
             # TODO compare half of parameters against half of the words
             last_resolutions = dfs[['resolution','tf_idf']].groupby('resolution').max()
             last_resolutions = last_resolutions.sort_values('tf_idf').index
-            print('last set of resolutions:')
-            print(last_resolutions)
+            #print('last set of resolutions:')
+            #print(last_resolutions)
             
             last_worst_resolutions = self._half_split(last_resolutions)
             if(last_worst_resolutions.size == dfs['resolution'].unique().size):
@@ -154,20 +182,35 @@ class SearchTechnique(BaseClassifier):
     def predict(self):
         return 0
     
-    def _get_samples(self, sample_size, classes, labels):
+    def _get_samples_id(self, sample_size, classes, labels, seed=None):
         
-        samples = pd.Series([])
+        samples_id = pd.Series([])
         for c in classes:
-            # TODO random State, replication of experiments
             index = pd.Series(labels[labels==c].index)
             if(sample_size > index.size):
-                samples = samples.append(index)
+                samples_id = samples_id.append(index)
                 continue
             
-            s = index.sample(sample_size)
-            samples = samples.append(s)
+            s = index.sample(sample_size, random_state=seed)
+            samples_id = samples_id.append(s)
         
-        return samples
+        return samples_id
+    
+    def _generate_random_list(self, num_elements):
+        
+        random.seed(self.random_state)
+        return [random.random() for _ in range(num_elements)]
+        
+        
+    def _generate_iteration_limit(self, labels, classes):
+        
+        max_class_group = 0
+        for c in classes:
+            size_c = labels[labels==c].size
+            if(max_class_group < size_c):
+                max_class_group =  size_c
+        
+        self._iteration_limit = np.log2(max_class_group)
         
     def _get_histogram(self):
         return pd.DataFrame([])
