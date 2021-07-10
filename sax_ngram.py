@@ -79,8 +79,8 @@ class SaxNgram(_PanelToPanelTransformer):
                                           self.window_prop)
         
         # Local variables
-        self._breakpoints = []
-        self._alphabet = []
+        self._breakpoints = self._generate_breakpoints()
+        self._alphabet = self._generate_alphabet()
         self._frequency_thereshold = 2
     
     def transform(self, data):
@@ -106,10 +106,8 @@ class SaxNgram(_PanelToPanelTransformer):
         data = data.squeeze(1)
         
         # Variables
-        self._breakpoints = self._generate_breakpoints()
-        self._alphabet = self._generate_alphabet()
         histograms = []
-                
+        
         # Counting the words for each sample of the data
         for sample in data:
             
@@ -119,21 +117,19 @@ class SaxNgram(_PanelToPanelTransformer):
             # Bag of words of each time series
             histogram = dict()
             
+            # TODO verify if all windows and all ngram produces
+            # only features non-frequenty 
             # Multiple resolutions using various windows lenghts
             window_lengths = self.resolution.get_window_lengths_list(series_length)
             for window_length in window_lengths:
                 
                 print(window_length, end=' ')
-            
-                # taking all sliding windows fixed on one set of parameter       
+                
+                # Number of sliding windows inside the time series sample
                 num_windows = series_length - window_length + 1
-                windows = np.array(
-                    sample[
-                        np.arange(window_length)[None, :]
-                        + np.arange(num_windows)[:, None],
-                    ],
-                    dtype= np.float32
-                )
+
+                # taking all sliding windows fixed on one set of parameter       
+                windows = self._get_sliding_windows(sample, window_length, num_windows)
                 
                 # TODO if normalize == False then breakpoints must change
                 #   iterativily calcule the mean and the standard deviation
@@ -147,35 +143,34 @@ class SaxNgram(_PanelToPanelTransformer):
                 windows_df = pd.DataFrame()
                 windows_df[0] = [pd.Series(x, dtype=np.float32) for x in windows]
                 
-                # word length for each window length
+                # Calculating the word length regarded by the window length
                 word_length = int(window_length * self.dimension_reduction_prop)
                 
                 # Approximating each window and reducing its dimension
                 paa = PAA(num_intervals=word_length)
                 windows_appr = paa.fit_transform(windows_df)
-                windows_appr = np.asarray([np.asarray(a) for a in windows_appr.iloc[:, 0]])
                 
                 # Discretizing each window into a word
-                words = [self._create_word(window) for window in windows_appr]
+                words = windows_appr[0].apply(self._create_word)
                 
                 # TODO n-grams without superposition
                 # TODO Optimizes to a array of string then use Counter to make a dictionary
                 # Counting the frequency of each n-gram for each window length
                 for n in self.resolution.get_ngrams_remaining(window_length):
                     dict_aux = dict()
-                    for i in range(num_windows -n +1):
-                        resolution_id = [str(window_length), str(n)]
-                        ngram = ' '.join(resolution_id+words[i:i+n])
+                    for i in range(num_windows -n*window_length ):
+                        resolution_id = '{} {} '.format(window_length, n)
+                        # TODO assign on the feature its dimension id
+                        ngram =  resolution_id + ' '.join(words[np.arange(i,i+n*window_length,window_length)])
                         dict_aux[ngram] = dict_aux.get(ngram,0) + 1
-                    # TODO vote system or remove the resolution with no advantages
-                    features_up_threshold = np.asarray(list(dict_aux.values())) > self._frequency_thereshold
-                    # Verifies the existence of frenquenty features
-                    # if yes - adds all features into the bag of words of the series
-                    # TODO discover if it is possible add only the frequent words...
-                    if(features_up_threshold.any()):
-                        for key, value in dict_aux.items():
-                            histogram[key] = value
-                
+                        # TODO vote system or remove the resolution with no advantages
+                        features_up_threshold = np.asarray(list(dict_aux.values())) > self._frequency_thereshold
+                        # Verifies the existence of frenquenty features
+                        # if yes - adds all features into the bag of words of the series
+                        # TODO discover if it is possible add only the frequent words...
+                        if(features_up_threshold.any()):
+                            for key, value in dict_aux.items():
+                                histogram[key] = value
             
             print('size of the bag: ', sys.getsizeof(histogram))
             # Group the histograms of all samples
@@ -185,6 +180,19 @@ class SaxNgram(_PanelToPanelTransformer):
     def remove_resolutions(self, resolutions):
         self.resolution.remove(resolutions)
     
+    def show_resoltuion(self):
+        self.resolution.show()
+        
+    def _get_sliding_windows(self, sample, window_length, num_windows):
+        
+        return np.array(
+                    sample[
+                        np.arange(window_length)[None, :]
+                        + np.arange(num_windows)[:, None],
+                    ],
+                    dtype= np.float32
+                )
+
     def _create_word(self, window):
         '''
         Each value of the window is transformed into a alphabet letter, 
@@ -272,6 +280,7 @@ class SaxNgram(_PanelToPanelTransformer):
             aux *= 2
 
         return window_lengths
+    
 
 
 
