@@ -68,7 +68,10 @@ class SearchTechnique(BaseClassifier):
                                      self.dimension_reduction_prop,
                                      self.alphabet_size)
         self._sample_multiplier = 2
+        self._proportion_list = pd.Series()
+        self._max_class_group = None
         self._iteration_limit = None
+        self._random_list = []
         
     def fit(self, data, labels):
         
@@ -79,36 +82,45 @@ class SearchTechnique(BaseClassifier):
             raise 'The number of samples and labels must be the same'
             
         
-        # Initializating the iteration
-        classes = labels.unique()
-        sample_size = self.initial_sample_per_class
-        
-        # Calculating the number of iterations
-        self._calcule_iteration_limit(labels, classes)
-        
-        seed_list = self._generate_random_list(labels, classes)
+        ################ Initializating the iteration ####################
 
-        iteration = 0
+        classes = labels.unique()
+        
+        # Calculating the class proportion
+        self._generate_class_proportion(labels, classes)
+        
+        # Calculating the max number of iterations
+        self._generate_iteration_limit(labels, classes)
+        
+        # Generating a list of random to sample the data
+        seed_list = self._generate_random_list(labels, classes)
+        
+        #
+        
+        ##################################################################
+        iteration = -1
         while(True):
             iteration += 1
 
-            # TODO unbalanced classes
-            samples_id = self._get_samples_id(sample_size, classes, labels, seed = seed_list[iteration-1])
+            # TODO
+            # First Paper - Experiments (Unbalanced vs Balanced samples)
+            samples_id = self._get_samples_id(classes, labels, seed = seed_list[iteration])
             N = samples_id.size
             print('\nTransforming the series..')
             self._transformer.show_resoltuion()
             print('\nsample size: {}'.format(N))
             
-            # TODO make the transformation multivariable!!!! important
+            # Second Paper - technique ability
+            # todo make the transformation multivariable!!!! important
             bags = self._transformer.fit_transform(data.iloc[samples_id,:])
             dfs = pd.DataFrame([])
             
             print('\nCalculating the tf of each word..\n')
             i=0
             for sample in samples_id:
-                # TODO separate the words from the meta informations
-                # for speed up
-                df = pd.DataFrame.from_dict(bags[i], orient='index')
+                # Second Paper - Algorithm speed up
+                # todo separate the words from the meta informations for speed up
+                df = bags[sample]
                 df = df.reset_index()
                 df.columns = ['word', 'frequency']
                 df['resolution'] = [ ' '.join(word.split(' ')[0:2]) for word in df['word']]
@@ -125,6 +137,7 @@ class SearchTechnique(BaseClassifier):
             print('\nBag of Words')
             print(dfs[['word','frequency']])
             print('\nCalculating the tf idf of each word..')
+            # First Paper - Experiments
             # TODO remove from N the 'documents' from the same class
             dfs['tf_idf'] = 0
             docs_freqs = pd.Series(Counter(dfs['word']))
@@ -149,14 +162,16 @@ class SearchTechnique(BaseClassifier):
                 print('\n\nAll samples were processed!')
                 break
             
+            # First Paper - Experiments
             # TODO test this parameter of half parameters double samples
             # with other proportions like 1/3 3* or sum with fixed buckets
-            sample_size *= self._sample_multiplier
+            self._sample_multiplier *= self._sample_multiplier
 
             dfs = dfs.reset_index()
             dfs = dfs.sort_values('tf_idf')
 
             print('\nRemoving worst resolutions found in this iteration')
+            # First Paper - Experiments
             # TODO compare half of parameters against half of the words
             last_resolutions = dfs[['resolution','tf_idf']].groupby('resolution').max()
             last_resolutions = last_resolutions.sort_values('tf_idf').index
@@ -168,7 +183,8 @@ class SearchTechnique(BaseClassifier):
                 raise 'The worst resolutions comprehense all the resolution \
                         isntead of half of resolutions'
             
-            # TODO Vote system to down vote
+            # First Paper - Technique Version !!! important
+            # TODO Vote system to down or up vote features
             # necessarily to up vote in other versions of ST
             self._transformer.remove_resolutions(last_worst_resolutions)
 
@@ -182,11 +198,23 @@ class SearchTechnique(BaseClassifier):
     def predict(self):
         return 0
     
-    def _get_samples_id(self, sample_size, classes, labels, seed=None):
+    def _get_samples_id(self, classes, labels, seed=None):
+
+        # Creating a list with the number of samples for each class to make
+        # the sample
+        sample_sizes=[]
+        if(self.unbalanced_classes):
+            sample_sizes = self._sample_multiplier*self._class_proportion
+        else:
+            s_size = self._sample_multiplier*self.initial_sample_per_class
+            sample_sizes = [s_size]*classes.size
         
+        # Sampling the data based on each class with reproducibility
         samples_id = pd.Series([])
-        for c in classes:
+        for c,sample_size in zip(classes, sample_sizes):
             index = pd.Series(labels[labels==c].index)
+            # if the sample is greater than the number of samples,
+            # just take all the samples available
             if(sample_size > index.size):
                 samples_id = samples_id.append(index)
                 continue
@@ -196,21 +224,35 @@ class SearchTechnique(BaseClassifier):
         
         return samples_id
     
+    def _generate_class_proportion(self, labels, classes, rewrite = False):
+        
+        if(self._class_proportion.size and not rewrite):
+            print('_class_proportion was already calculated, set the option \
+                  rewrite=True for rewriting')
+        
+        class_groups = pd.Series()
+        
+        for c in classes:
+            class_groups[c] = labels[labels==c].size
+
+        self._max_class_group = class_groups.max()
+        total_samples = labels.size
+        
+        class_prop = class_groups/total_samples
+        self._class_proportion = (class_prop*self.initial_sample_per_class)//class_prop.min()
+        
+    def _generate_iteration_limit(self, labels, classes):
+        
+        if(self._max_class_group is None):
+            raise 'to calculate the number of iteration the class proportion \
+                    must be calculated first'
+     
+        self._iteration_limit = np.log2(self._max_class_group)
+    
     def _generate_random_list(self, num_elements):
         
         random.seed(self.random_state)
         return [random.random() for _ in range(num_elements)]
-        
-        
-    def _generate_iteration_limit(self, labels, classes):
-        
-        max_class_group = 0
-        for c in classes:
-            size_c = labels[labels==c].size
-            if(max_class_group < size_c):
-                max_class_group =  size_c
-        
-        self._iteration_limit = np.log2(max_class_group)
         
     def _get_histogram(self):
         return pd.DataFrame([])
