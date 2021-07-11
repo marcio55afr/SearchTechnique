@@ -100,25 +100,24 @@ class SaxNgram(_PanelToPanelTransformer):
 
         '''
         
-        # TODO check for others types of data and handle each of them
-        # TODO decide process multivariate data or not!!! important
+        # Second Paper - technique ability
+        # todo check for others types of data and handle each of them
+        # todo decide process multivariate data or not!!! important
         data = check_X(data, enforce_univariate=True, coerce_to_pandas=True)
         data = data.squeeze(1)
         
         # Variables
-        histograms = []
+        histograms = pd.Series(index=data.index, dtype = object)
         
         # Counting the words for each sample of the data
         for sample in data:
             
-            # Variable size to each sample of the data
+            # Size of the sample (time series)
             series_length = sample.size
             
-            # Bag of words of each time series
-            histogram = dict()
+            # A Series of bag of words with all resolutions
+            bag_of_bags = pd.Series()
             
-            # TODO verify if all windows and all ngram produces
-            # only features non-frequenty 
             # Multiple resolutions using various windows lenghts
             window_lengths = self.resolution.get_window_lengths_list(series_length)
             for window_length in window_lengths:
@@ -131,6 +130,7 @@ class SaxNgram(_PanelToPanelTransformer):
                 # taking all sliding windows fixed on one set of parameter       
                 windows = self._get_sliding_windows(sample, window_length, num_windows)
                 
+                # First Paper - Experiment
                 # TODO if normalize == False then breakpoints must change
                 #   iterativily calcule the mean and the standard deviation
                 #   and calcule the breakpoints in order to get equiprobability
@@ -151,30 +151,24 @@ class SaxNgram(_PanelToPanelTransformer):
                 windows_appr = paa.fit_transform(windows_df)
                 
                 # Discretizing each window into a word
-                words = windows_appr[0].apply(self._create_word)
+                words = windows_appr[0].apply(self._generate_word)
                 
-                # TODO n-grams without superposition
-                # TODO Optimizes to a array of string then use Counter to make a dictionary
+                # Second Paper - Algorithm speed up
+                # todo Optimizes to a array of string then use Counter to make a dictionary
                 # Counting the frequency of each n-gram for each window length
-                for n in self.resolution.get_ngrams_remaining(window_length):
-                    dict_aux = dict()
-                    for i in range(num_windows -n*window_length ):
-                        resolution_id = '{} {} '.format(window_length, n)
-                        # TODO assign on the feature its dimension id
-                        ngram =  resolution_id + ' '.join(words[np.arange(i,i+n*window_length,window_length)])
-                        dict_aux[ngram] = dict_aux.get(ngram,0) + 1
-                        # TODO vote system or remove the resolution with no advantages
-                        features_up_threshold = np.asarray(list(dict_aux.values())) > self._frequency_thereshold
-                        # Verifies the existence of frenquenty features
-                        # if yes - adds all features into the bag of words of the series
-                        # TODO discover if it is possible add only the frequent words...
-                        if(features_up_threshold.any()):
-                            for key, value in dict_aux.items():
-                                histogram[key] = value
+                ngram_word_frequency = self._get_ngrams_word_count(words, window_length)
+                bag_of_bags = bag_of_bags.append(ngram_word_frequency)
             
-            print('size of the bag: ', sys.getsizeof(histogram))
+            # verify if all windows and all ngram only transform
+            # a timeseries into features non-frequenty 
+            if(not bag_of_bags.size):
+                raise 'A sample was not able to be discretized. The \
+                remmaining resolutions produces only non-frequent words \
+                or the variable _frequency_thereshold is too high.'
+            
+            print('size of the bag: ', sys.getsizeof(bag_of_bags))
             # Group the histograms of all samples
-            histograms.append(histogram)
+            histograms.append(bag_of_bags)
         return histograms
     
     def remove_resolutions(self, resolutions):
@@ -193,7 +187,30 @@ class SaxNgram(_PanelToPanelTransformer):
                     dtype= np.float32
                 )
 
-    def _create_word(self, window):
+    def _get_ngrams_word_count(self, words, window_length):
+        
+        num_words = words.size
+        bag_of_bags = pd.Series()
+        for n in self.resolution.get_ngrams_remaining(window_length):
+            bag_of_ngrams = dict()
+            for j in range(num_words -n*window_length ):
+                # Second Paper - technique ability
+                # todo assign on the feature its dimension id
+                ngram = ' '.join(words[np.arange(j,j+n*window_length,window_length)])
+                bag_of_ngrams[ngram] = bag_of_ngrams.get(ngram,0) + 1
+            
+            bag_of_ngrams = pd.DataFrame.from_dict(bag_of_ngrams, orient='index')
+            # Verifies the existence of frenquenty features
+            # if yes - adds all features into the bag of words of the 
+            # First Paper - Experiments
+            # TODO discover if it is possible add only the frequent words...
+            if(any(bag_of_ngrams[0] > self._frequency_thereshold)):
+                resolution_id = '{} {}'.format(window_length, n)
+                bag_of_bags[resolution_id] = bag_of_ngrams
+            
+        return bag_of_bags
+    
+    def _generate_word(self, window):
         '''
         Each value of the window is transformed into a alphabet letter, 
         this transformation depends on the breakpoints before stablished

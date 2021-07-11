@@ -32,8 +32,7 @@ class NgramResolution(object):
     def get_ngrams_remaining(self, window_length):
         
         remaining = self.resolutions_matrix[window_length] == 1
-        return self.resolutions_matrix.loc[remaining,
-                                          window_length].index
+        return self.resolutions_matrix.loc[remaining, window_length].index
     
     def get_window_lengths_list(self, series_length):
         
