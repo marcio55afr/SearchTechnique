@@ -79,7 +79,7 @@ class SaxNgram(_PanelToPanelTransformer):
                                           self.window_prop)
         
         # Local variables
-        self._breakpoints = self._generate_breakpoints()
+        self._breakpoints = None
         self._alphabet = self._generate_alphabet()
         self._frequency_thereshold = 2
     
@@ -106,6 +106,8 @@ class SaxNgram(_PanelToPanelTransformer):
         data = check_X(data, enforce_univariate=True, coerce_to_pandas=True)
         data = data.squeeze(1)
         
+        self._breakpoints = self._generate_breakpoints(data[0])
+        
         # Variables
         histograms = pd.Series(index=data.index, dtype = object)
         
@@ -129,11 +131,6 @@ class SaxNgram(_PanelToPanelTransformer):
 
                 # taking all sliding windows fixed on one set of parameter       
                 windows = self._get_sliding_windows(sample, window_length, num_windows)
-                
-                # First Paper - Experiment
-                # TODO if normalize == False then breakpoints must change
-                #   iterativily calcule the mean and the standard deviation
-                #   and calcule the breakpoints in order to get equiprobability
 
                 # If the parameter normalize is true, each window will be normalized
                 if(self.normalize):
@@ -200,13 +197,33 @@ class SaxNgram(_PanelToPanelTransformer):
                 bag_of_ngrams[ngram] = bag_of_ngrams.get(ngram,0) + 1
             
             bag_of_ngrams = pd.DataFrame.from_dict(bag_of_ngrams, orient='index')
-            # Verifies the existence of frenquenty features
-            # if yes - adds all features into the bag of words of the 
+            resolution_id = '{} {}'.format(window_length, n)
+            # TODO
             # First Paper - Experiments
-            # TODO discover if it is possible add only the frequent words...
-            if(any(bag_of_ngrams[0] > self._frequency_thereshold)):
-                resolution_id = '{} {}'.format(window_length, n)
+            # (frequent words X resolution with frequent words X all words)
+            
+            ######### all words ############
+            
+            bag_of_bags[resolution_id] = bag_of_ngrams
+            
+            ######### resolution with frequent words ############
+            # Verifies the existence of frenquenty features
+            # if yes - adds all features into the bag of words of the
+            '''
+            if(any(bag_of_ngrams > self._frequency_thereshold)):
                 bag_of_bags[resolution_id] = bag_of_ngrams
+            '''
+            ######### frequent words ############
+            # Verifies the existence of frenquent features
+            # and add only the frequent features to save memory
+            # only in the proccess to find out the resolutions
+            '''
+            frequent_features = bag_of_ngrams > self._frequency_thereshold
+            if(any(frequent_features)):
+                bag_of_bags[resolution_id] = bag_of_ngrams
+            '''
+            
+            
             
         return bag_of_bags
     
@@ -241,30 +258,36 @@ class SaxNgram(_PanelToPanelTransformer):
 
         return word
 
-    def _generate_breakpoints(self):
-        # Pre-made gaussian curve breakpoints from UEA TSC codebase
-        return {
-            2: [0, sys.float_info.max],
-            3: [-0.43, 0.43, sys.float_info.max],
-            4: [-0.67, 0, 0.67, sys.float_info.max],
-            5: [-0.84, -0.25, 0.25, 0.84, sys.float_info.max],
-            6: [-0.97, -0.43, 0, 0.43, 0.97, sys.float_info.max],
-            7: [-1.07, -0.57, -0.18, 0.18, 0.57, 1.07, sys.float_info.max],
-            8: [-1.15, -0.67, -0.32, 0, 0.32, 0.67, 1.15, sys.float_info.max],
-            9: [-1.22, -0.76, -0.43, -0.14, 0.14, 0.43, 0.76, 1.22, sys.float_info.max],
-            10: [
-                -1.28,
-                -0.84,
-                -0.52,
-                -0.25,
-                0.0,
-                0.25,
-                0.52,
-                0.84,
-                1.28,
-                sys.float_info.max,
-            ],
-        }[self.alphabet_size]
+    def _generate_breakpoints(self,data=None):
+        
+        if(self.normalize):
+            # Pre-made gaussian curve breakpoints from UEA TSC codebase
+            return {
+                2: [0, sys.float_info.max],
+                3: [-0.43, 0.43, sys.float_info.max],
+                4: [-0.67, 0, 0.67, sys.float_info.max],
+                5: [-0.84, -0.25, 0.25, 0.84, sys.float_info.max],
+                6: [-0.97, -0.43, 0, 0.43, 0.97, sys.float_info.max],
+                7: [-1.07, -0.57, -0.18, 0.18, 0.57, 1.07, sys.float_info.max],
+                8: [-1.15, -0.67, -0.32, 0, 0.32, 0.67, 1.15, sys.float_info.max],
+                9: [-1.22, -0.76, -0.43, -0.14, 0.14, 0.43, 0.76, 1.22, sys.float_info.max],
+                10: [-1.28, -0.84, -0.52, -0.25, 0.0, 0.25, 0.52, 0.84, 1.28, sys.float_info.max],
+            }[self.alphabet_size]
+        
+        else:
+            s = pd.Series()
+            for time_series in data:
+                s = s.append(time_series)
+                
+            s = s.sort_values()
+            bucket_size = s.size//self.alphabet_size
+            breakpoints = []
+            
+            for bucket in range(self.alphabet_size-1):
+                bp_id = bucket_size*(bucket+1)
+                bp = s[bp_id:bp_id+2].sum()/2
+                breakpoints.append(bp)
+            breakpoints.append(sys.float_info.max)
 
     def _generate_alphabet(self):
         # Symbols of an anphabet to be used in the discretization
