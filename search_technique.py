@@ -62,11 +62,28 @@ class SearchTechnique(BaseClassifier):
         self.random_state = random_state
         
         # Variables
+        
+        # TODO
+        # First Paper - Experiments 
+        # (window normalization X no window normalization)
+        
+        ######### normalization ############
         self._transformer = SaxNgram(self.max_series_length,
                                      self.min_window_length,
                                      self.window_prop,
                                      self.dimension_reduction_prop,
-                                     self.alphabet_size)
+                                     self.alphabet_size,
+                                     normalize = True)
+        
+        ######### non normalization ############
+        '''
+        self._transformer = SaxNgram(self.max_series_length,
+                                     self.min_window_length,
+                                     self.window_prop,
+                                     self.dimension_reduction_prop,
+                                     self.alphabet_size,
+                                     normalize = False)
+        '''
         self._sample_multiplier = 2
         self._proportion_list = pd.Series()
         self._max_class_group = None
