@@ -58,12 +58,22 @@ class SearchTechnique(BaseClassifier):
         self.dimension_reduction_prop = dimension_reduction_prop
         self.alphabet_size = alphabet_size
         self.initial_sample_per_class = initial_sample_per_class
-        self.unbalanced_classes = unbalanced_classes
         self.random_state = random_state
         
-        # Variables
+        # TODO
+        #-----------------------------------------------------------
+        # First Paper - Experiments (unbalanced X balanced samples)
+        
+        ######### balanced samples ############
+        self.unbalanced_classes = False
+        
+        ######### unbalanced samples ############
+        '''self.unbalanced_classes = True'''
+        #------------------------------------------------------------
+        
         
         # TODO
+        #-----------------------------------------------------------
         # First Paper - Experiments 
         # (window normalization X no window normalization)
         
@@ -84,7 +94,30 @@ class SearchTechnique(BaseClassifier):
                                      self.alphabet_size,
                                      normalize = False)
         '''
+        #-----------------------------------------------------------
+        
+        # TODO
+        #-----------------------------------------------------------
+        # First Paper - Experiments
+        # test the proportions
+        # ( x1.5 x0.75 / x2 x0.5 / x3 x0.333 )
+        
+        ######### proportion 1 ############
+        '''self._sample_multiplier = 1.5
+        self._resolution_prop = 2/3'''
+        
+        ######### proportion 2 ############
         self._sample_multiplier = 2
+        self._resolution_prop = 1/2
+        
+        ######### proportion 3 ############
+        '''self._sample_multiplier = 3
+        self._resolution_prop = 1/3'''
+        #-----------------------------------------------------------
+        
+        
+        # Variables
+        self._accumulated_multiplier = 1
         self._proportion_list = pd.Series()
         self._max_class_group = None
         self._iteration_limit = None
@@ -110,7 +143,7 @@ class SearchTechnique(BaseClassifier):
         self._generate_iteration_limit(labels, classes)
         
         # Generating a list of random to sample the data
-        seed_list = self._generate_random_list(labels, classes)
+        seed_list = self._get_random_list(labels, classes)
         
         #
         
@@ -119,8 +152,6 @@ class SearchTechnique(BaseClassifier):
         while(True):
             iteration += 1
 
-            # TODO
-            # First Paper - Experiments (Unbalanced vs Balanced samples)
             samples_id = self._get_samples_id(classes, labels, seed = seed_list[iteration])
             N = samples_id.size
             print('\nTransforming the series..')
@@ -156,6 +187,8 @@ class SearchTechnique(BaseClassifier):
             print('\nCalculating the tf idf of each word..')
             # First Paper - Experiments
             # TODO remove from N the 'documents' from the same class
+            # Try to consider all the samples within the same class as the a same
+            # document
             dfs['tf_idf'] = 0
             docs_freqs = pd.Series(Counter(dfs['word']))
             i=0
@@ -179,10 +212,7 @@ class SearchTechnique(BaseClassifier):
                 print('\n\nAll samples were processed!')
                 break
             
-            # First Paper - Experiments
-            # TODO test this parameter of half parameters double samples
-            # with other proportions like 1/3 3* or sum with fixed buckets
-            self._sample_multiplier *= self._sample_multiplier
+            self._accumulated_multiplier *= self._sample_multiplier
 
             dfs = dfs.reset_index()
             dfs = dfs.sort_values('tf_idf')
@@ -190,24 +220,24 @@ class SearchTechnique(BaseClassifier):
             print('\nRemoving worst resolutions found in this iteration')
             # First Paper - Experiments
             # TODO compare half of parameters against half of the words
-            last_resolutions = dfs[['resolution','tf_idf']].groupby('resolution').max()
-            last_resolutions = last_resolutions.sort_values('tf_idf').index
+            # caution!
+            # half of the best words could comprehend all the resolutions!
+            resolutions = dfs[['resolution','tf_idf']].groupby('resolution').max()
+            resolutions = resolutions.sort_values('tf_idf').index
             #print('last set of resolutions:')
             #print(last_resolutions)
             
-            last_worst_resolutions = self._half_split(last_resolutions)
-            if(last_worst_resolutions.size == dfs['resolution'].unique().size):
+            worst_resolutions = self._data_split(resolutions, self._resolution_prop)
+            if(worst_resolutions.size == dfs['resolution'].unique().size):
                 raise 'The worst resolutions comprehense all the resolution \
-                        isntead of half of resolutions'
+                        isntead of a proportion of it'
             
             # First Paper - Technique Version !!! important
             # TODO Vote system to down or up vote features
             # necessarily to up vote in other versions of ST
-            self._transformer.remove_resolutions(last_worst_resolutions)
+            self._transformer.remove_resolutions(worst_resolutions)
 
         return dfs
-        
-     
         
     def predict_proba(self):
         return .0
@@ -221,9 +251,9 @@ class SearchTechnique(BaseClassifier):
         # the sample
         sample_sizes=[]
         if(self.unbalanced_classes):
-            sample_sizes = self._sample_multiplier*self._class_proportion
+            sample_sizes = self._accumulated_multiplier*self._class_proportion
         else:
-            s_size = self._sample_multiplier*self.initial_sample_per_class
+            s_size = self._accumulated_multiplier*self.initial_sample_per_class
             sample_sizes = [s_size]*classes.size
         
         # Sampling the data based on each class with reproducibility
@@ -266,7 +296,7 @@ class SearchTechnique(BaseClassifier):
      
         self._iteration_limit = np.log2(self._max_class_group)
     
-    def _generate_random_list(self, num_elements):
+    def _get_random_list(self, num_elements):
         
         random.seed(self.random_state)
         return [random.random() for _ in range(num_elements)]
@@ -274,15 +304,15 @@ class SearchTechnique(BaseClassifier):
     def _get_histogram(self):
         return pd.DataFrame([])
     
-    def _half_split(self, data, part='first'):
+    def _data_split(self, data, proportion, part='first'):
         
-        half = len(data)//2
+        split_point = int(data.size*proportion)
         
         if(part=='first'):
-            return data[:half]
+            return data[:split_point]
         
         elif(part=='second'):
-            return data[half:]
+            return data[split_point:]
 
         raise 'The function _half_split can only return the first or second part'
 
