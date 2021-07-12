@@ -2,6 +2,7 @@ import random
 import math
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LogisticRegression
 from sktime.classification.base import BaseClassifier
 
 from sax_ngram import SaxNgram
@@ -59,6 +60,8 @@ class SearchTechnique(BaseClassifier):
         self.alphabet_size = alphabet_size
         self.initial_sample_per_class = initial_sample_per_class
         self.random_state = random_state
+        
+        self.simple_clf = None
         
         # TODO
         #-----------------------------------------------------------
@@ -122,6 +125,7 @@ class SearchTechnique(BaseClassifier):
         self._max_class_group = None
         self._iteration_limit = None
         self._random_list = []
+        self._columns = None
         
     def fit(self, data, labels):
         
@@ -207,10 +211,13 @@ class SearchTechnique(BaseClassifier):
                 idf = np.log2(N/(doc_freq+1))
                 
                 dfs.loc[sample,'tf_idf'] = tf*idf
-
-            if( samples_id.size == total_samples ):
+            
+            #-----------------------------------------------------------
+            ######### break at the middle ############
+            '''if( samples_id.size == total_samples ):
                 print('\n\nAll samples were processed!')
-                break
+                break'''
+            #-----------------------------------------------------------
             
             self._accumulated_multiplier *= self._sample_multiplier
 
@@ -237,13 +244,49 @@ class SearchTechnique(BaseClassifier):
             # necessarily to up vote in other versions of ST
             self._transformer.remove_resolutions(worst_resolutions)
 
+            # TODO
+            #-----------------------------------------------------------
+            # First Paper - Experiments
+            # (break at the end / break at the middle)
+            
+            ######### break at the end ############
+            if( samples_id.size == total_samples ):
+                print('\n\nAll samples were processed!')
+                break
+            #-----------------------------------------------------------
+    
+        x_train = self._extract_features(data)
+        self._columns = x_train.columns
+        
+        self.simple_clf = LogisticRegression(solver='newton-cg',
+                                             multi_class='multinomial',
+                                             class_weight='balanced').fit(x_train, labels)
+
+        self._is_fitted = True
+
         return dfs
         
-    def predict_proba(self):
-        return .0
+    def predict_proba(self, data):
+        
+        x_data = self._extract_features(data)
+        return self.clf.predict_proba(x_data)
     
-    def predict(self):
-        return 0
+    def predict(self, data):
+        
+        x_data = self._extract_features(data)
+        return self.clf.predict(x_data)
+    
+    def _extract_features(self, data):
+        
+        features = pd.DataFrame(columns=self._columns)
+        bags = self._transformer.fit_transform(data)
+        for bag,i in zip(bags,bags.index):
+            df = pd.DataFrame(bag).T
+            df.index = [i]
+            features = features.append(df)
+        
+        return features.fillna(0)
+        
     
     def _get_samples_id(self, classes, labels, seed=None):
 
