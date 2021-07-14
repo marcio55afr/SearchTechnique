@@ -10,12 +10,9 @@ class NgramResolution(object):
         
         self.min_window_length = min_window_length
         self.window_prop = window_prop
-        self.max_window_length = max_series_length*window_prop
+        self.max_window_length = int(max_series_length*window_prop)
         self.max_ngrams = self.max_window_length//min_window_length
-        
-        # Convert the number to int
-        self.max_window_length = int(self.max_window_length)
-        self.max_ngrams = int(self.max_ngrams)
+
 
         window_lengths_list = self._generate_window_lengths(self.min_window_length,
                                                             self.max_window_length)
@@ -37,8 +34,14 @@ class NgramResolution(object):
     def get_window_lengths_list(self, series_length):
         
         windows = self.resolutions_matrix.columns
-        selecting_windows = windows <= series_length*self.window_prop
-        return windows[selecting_windows].to_list()
+        mask = windows <= series_length*self.window_prop
+        
+        selected_windows = windows[mask].to_list()
+        if(len(selected_windows)):
+            return selected_windows
+        if(series_length < windows[0]):
+            raise 'The time series is shorter than the smallest window, remove this sample or decrease the smallest window'
+        return [windows[0]]
     
     def remove(self, resolutions):
         
@@ -51,8 +54,12 @@ class NgramResolution(object):
     def show(self):
         
         print('\nResolution Matrix')
-        i = [0,1,2,3,4,5,6,7,8,-9,-8,-7,-6,-5,-4,-3,-2,-1]
-        print(self.resolutions_matrix.iloc[i])
+        if(self.resolutions_matrix.shape[0] > 10):
+            i = [0,1,2,3,4,5,6,7,8,-9,-8,-7,-6,-5,-4,-3,-2,-1]
+            print(self.resolutions_matrix.iloc[i])
+        else:
+            print(self.resolutions_matrix)
+            
         
     def _generate_window_lengths(self,min_length ,max_length):
         
