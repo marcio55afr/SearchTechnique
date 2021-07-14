@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from sktime.transformations.panel.dictionary_based import SAX, SFA, PAA
 from sktime.utils.validation.panel import check_X
+from sklearn.metrics import accuracy_score
 import scipy.stats
 import matplotlib.pyplot as plt
 
@@ -153,13 +154,23 @@ class Test(object):
         for threshold in self.THRESHOLD: self.plot_zipfsLaw(threshold)
 
 
-df_train = pd.read_hdf('AtrialFibrillation', key='train')
+df_train = pd.read_hdf('JapaneseVowels', key='train')
 labels = df_train.iloc[:,-1]
 
 time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[:,0]])
-print(time_series)
-st = SearchTechnique(640)
+#print(time_series)
+st = SearchTechnique(29, random_state=32)
 dfs = st.fit(time_series, labels)
+
+df_test = pd.read_hdf('JapaneseVowels', key='test')
+labels = df_test.iloc[:,-1]
+time_series =  pd.DataFrame([[ts.values] for ts in df_test.iloc[:,0]])
+time_series.index = df_test.index
+#print(time_series)
+labels_pred = st.predict(time_series)
+
+acc = accuracy_score(labels.values, labels_pred)
+print(acc)
 
 '''
 path = 'results/initial_test/'
