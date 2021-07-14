@@ -7,6 +7,7 @@ from sktime.transformations.panel.dictionary_based import PAA
 
 from ngram_resolution import NgramResolution
 
+from math import floor
 import numpy as np
 import pandas as pd
 import scipy.stats
@@ -81,7 +82,8 @@ class SaxNgram(_PanelToPanelTransformer):
         # Local variables
         self._breakpoints = None
         self._alphabet = self._generate_alphabet()
-        self._frequency_thereshold = 2
+        self._bin_symbols = floor(np.log2(self.alphabet_size)) + 1
+        self._frequency_thereshold = 0
     
     def transform(self, data):
         '''
@@ -106,25 +108,25 @@ class SaxNgram(_PanelToPanelTransformer):
         data = check_X(data, enforce_univariate=True, coerce_to_pandas=True)
         data = data.squeeze(1)
         
-        self._breakpoints = self._generate_breakpoints(data[0])
+        self._breakpoints = self._generate_breakpoints(data)
         
         # Variables
         histograms = pd.Series(index=data.index, dtype = object)
         
         # Counting the words for each sample of the data
-        for sample in data:
+        for sample_id in data.index:
+            sample = data[sample_id]
             
             # Size of the sample (time series)
             series_length = sample.size
             
             # A Series of bag of words with all resolutions
-            bag_of_bags = pd.Series()
+            bag_of_bags = pd.DataFrame()
             
             # Multiple resolutions using various windows lenghts
             window_lengths = self.resolution.get_window_lengths_list(series_length)
-            for window_length in window_lengths:
-                
-                print(window_length, end=' ')
+            for window_length in window_lengths:                
+                #print(window_length, end=' ')
                 
                 # Number of sliding windows inside the time series sample
                 num_windows = series_length - window_length + 1
@@ -148,30 +150,28 @@ class SaxNgram(_PanelToPanelTransformer):
                 windows_appr = paa.fit_transform(windows_df)
                 
                 # Discretizing each window into a word
-                words = windows_appr[0].apply(self._generate_word)
+                words = windows_appr[0].apply(self._generate_bin_word)
                 
                 # Second Paper - Algorithm speed up
                 # todo Optimizes to a array of string then use Counter to make a dictionary
                 # Counting the frequency of each n-gram for each window length
                 ngram_word_frequency = self._get_ngrams_word_count(words, window_length)
-                bag_of_bags = bag_of_bags.append(ngram_word_frequency)
+                bag_of_bags = bag_of_bags.append(ngram_word_frequency, ignore_index=True)
             
             # verify if all windows and all ngram only transform
             # a timeseries into features non-frequenty 
             if(not bag_of_bags.size):
-                raise 'A sample was not able to be discretized. The \
-                remmaining resolutions produces only non-frequent words \
-                or the variable _frequency_thereshold is too high.'
+                raise 'A sample was not able to be discretized. The remmaining resolutions produces only non-frequent words or the variable _frequency_thereshold is too high.'
             
-            print('size of the bag: ', sys.getsizeof(bag_of_bags))
             # Group the histograms of all samples
-            histograms.append(bag_of_bags)
+            histograms[sample_id] = bag_of_bags
+        print('size of all bags: ', sys.getsizeof(bag_of_bags))
         return histograms
     
     def remove_resolutions(self, resolutions):
         self.resolution.remove(resolutions)
     
-    def show_resoltuion(self):
+    def show_resolution(self):
         self.resolution.show()
         
     def _get_sliding_windows(self, sample, window_length, num_windows):
@@ -187,24 +187,33 @@ class SaxNgram(_PanelToPanelTransformer):
     def _get_ngrams_word_count(self, words, window_length):
         
         num_words = words.size
-        bag_of_bags = pd.Series()
+        bag_of_bags = pd.DataFrame()
         for n in self.resolution.get_ngrams_remaining(window_length):
+            
+            if((num_words -(n-1)*window_length) <= 0):
+                break
+            
             bag_of_ngrams = dict()
-            for j in range(num_words -n*window_length ):
+            for j in range(num_words -(n-1)*window_length ):
                 # Second Paper - technique ability
                 # todo assign on the feature its dimension id
-                ngram = ' '.join(words[np.arange(j,j+n*window_length,window_length)])
+                ngram = self._join_words(words.iloc[np.asarray(range(n))*window_length + j])
+                #ngram = ' '.join(words[np.asarray(range(n))*window_length + j])
                 bag_of_ngrams[ngram] = bag_of_ngrams.get(ngram,0) + 1
             
+            resolution = '{} {}'.format(window_length, n)
             bag_of_ngrams = pd.DataFrame.from_dict(bag_of_ngrams, orient='index')
-            resolution_id = '{} {}'.format(window_length, n)
+            bag_of_ngrams = bag_of_ngrams.reset_index()
+            bag_of_ngrams['resolution'] = resolution
+            bag_of_ngrams.columns = ['word','frequency','resolution']
             # TODO
             # First Paper - Experiments
             # (frequent words X resolution with frequent words X all words)
             
             ######### all words ############
             
-            bag_of_bags[resolution_id] = bag_of_ngrams
+            bag_of_bags = bag_of_bags.append(bag_of_ngrams, ignore_index=True)
+            
             
             ######### resolution with frequent words ############
             # Verifies the existence of frenquenty features
@@ -223,9 +232,32 @@ class SaxNgram(_PanelToPanelTransformer):
                 bag_of_bags[resolution_id] = bag_of_ngrams
             '''
             
+        if(bag_of_bags.size == 0):
             
+            bag_of_ngrams = dict()
+            for w in words:
+                bag_of_ngrams[w] = bag_of_ngrams.get(w,0) + 1
             
+            resolution = '{} 1'.format(window_length)
+            bag_of_ngrams = pd.DataFrame.from_dict(bag_of_ngrams, orient='index')
+            bag_of_ngrams = bag_of_ngrams.reset_index()
+            bag_of_ngrams['resolution'] = resolution
+            bag_of_ngrams.columns = ['word','frequency','resolution']
+            
+            bag_of_bags = bag_of_bags.append(bag_of_ngrams, ignore_index=True)
         return bag_of_bags
+    
+    def _join_words(self, words):
+        
+        if(not words.size):
+            raise 'To join words the words must be sent to the function'
+        
+        ngram = words.iloc[0]
+        for i in range(words.size - 1):
+            ngram = ngram << self._bin_symbols # A sequence of 0' represents a space between ngrams
+            ngram = (ngram << self._bin_symbols) | words.iloc[i+1]
+        
+        return ngram
     
     def _generate_word(self, window):
         '''
@@ -252,10 +284,37 @@ class SaxNgram(_PanelToPanelTransformer):
             for bp in range(self.alphabet_size):
                 if value <= self._breakpoints[bp]:
                     aux = self._alphabet[bp]
-                    #word = (word << 2) | bp
                     break
-            word += aux
+            word+=aux
+        return word
+        
+    def _generate_bin_word(self, window):
+        '''
+        Each value of the window is transformed into a alphabet letter, 
+        this transformation depends on the breakpoints before stablished
+        
+        Parameters
+        ----------
+        window : list or array like
+            The series window to be discretized, must be an interator
+            with number values.
 
+        Returns
+        -------
+        word : int
+            Returns the corresponding word to the window considering
+            the alphabet and the breakpoints.
+        '''
+
+        word = 0
+        # runs through the window discretizing one value at a time.
+        for value in window:
+            for bp in range(self.alphabet_size):
+                if value <= self._breakpoints[bp]:
+                    #aux = self._alphabet[bp]
+                    word = (word << self._bin_symbols) | (bp+1)
+                    break
+                
         return word
 
     def _generate_breakpoints(self,data=None):
