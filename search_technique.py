@@ -45,9 +45,9 @@ class SearchTechnique(BaseClassifier):
 
     def __init__(self,
                  max_series_length,
-                 min_window_length = 6,
-                 window_prop = .5,
-                 dimension_reduction_prop=.80,
+                 min_window_length = 4,
+                 window_prop = .8,
+                 dimension_reduction_prop=1,
                  alphabet_size=4,
                  initial_sample_per_class=2,
                  unbalanced_classes = True,
@@ -121,7 +121,7 @@ class SearchTechnique(BaseClassifier):
         
         # Variables
         self._accumulated_multiplier = 1
-        self._proportion_list = pd.Series()
+        self._class_proportion = pd.Series()
         self._max_class_group = None
         self._iteration_limit = None
         self._random_list = []
@@ -147,9 +147,7 @@ class SearchTechnique(BaseClassifier):
         self._generate_iteration_limit(labels, classes)
         
         # Generating a list of random to sample the data
-        seed_list = self._get_random_list(labels, classes)
-        
-        #
+        seed_list = self._get_random_list()
         
         ##################################################################
         iteration = -1
@@ -159,29 +157,30 @@ class SearchTechnique(BaseClassifier):
             samples_id = self._get_samples_id(classes, labels, seed = seed_list[iteration])
             N = samples_id.size
             print('\nTransforming the series..')
-            self._transformer.show_resoltuion()
+            self._transformer.show_resolution()
             print('\nsample size: {}'.format(N))
-            
+            print('samples id: ',samples_id)
+
             # Second Paper - technique ability
             # todo make the transformation multivariable!!!! important
-            bags = self._transformer.fit_transform(data.iloc[samples_id,:])
+            bags = self._transformer.fit_transform(data.loc[samples_id,:])
             dfs = pd.DataFrame([])
             
             print('\nCalculating the tf of each word..\n')
             i=0
-            for sample in samples_id:
+            for sample_id in samples_id:
                 # Second Paper - Algorithm speed up
                 # todo separate the words from the meta informations for speed up
-                df = bags[sample]
-                df = df.reset_index()
-                df.columns = ['word', 'frequency']
-                df['resolution'] = [ ' '.join(word.split(' ')[0:2]) for word in df['word']]
-                df['sample'] = sample
-                df['total'] = df.shape[0]
-                df['tf'] = df['frequency']/df['total']
+                df = pd.DataFrame(bags[sample_id])
+                df['sample_id'] = sample_id
+                total = df.shape[0]
+                df['tf'] = df['frequency']/total
                 df.index.names = ['index']
-                df = df.reset_index().set_index(['sample','index'])
+                df = df.reset_index().set_index(['sample_id','index'])
                 
+                # TODO
+                # First Paper - Algorithm speed up
+                # concat or append?
                 dfs = pd.concat([dfs,df], axis=0, join='outer')
                 
                 i+=1
@@ -233,22 +232,24 @@ class SearchTechnique(BaseClassifier):
             resolutions = resolutions.sort_values('tf_idf').index
             #print('last set of resolutions:')
             #print(last_resolutions)
-            
+
             worst_resolutions = self._data_split(resolutions, self._resolution_prop)
             if(worst_resolutions.size == dfs['resolution'].unique().size):
                 raise 'The worst resolutions comprehense all the resolution \
                         isntead of a proportion of it'
-            
+
             # First Paper - Technique Version !!! important
             # TODO Vote system to down or up vote features
             # necessarily to up vote in other versions of ST
+            self._transformer.show_resolution()
             self._transformer.remove_resolutions(worst_resolutions)
+            self._transformer.show_resolution()
 
             # TODO
             #-----------------------------------------------------------
             # First Paper - Experiments
             # (break at the end / break at the middle)
-            
+
             ######### break at the end ############
             if( samples_id.size == total_samples ):
                 print('\n\nAll samples were processed!')
@@ -268,23 +269,33 @@ class SearchTechnique(BaseClassifier):
         
     def predict_proba(self, data):
         
-        x_data = self._extract_features(data)
-        return self.clf.predict_proba(x_data)
+        x_data = self._extract_predict_features(data)
+        return self.simple_clf.predict_proba(x_data)
     
     def predict(self, data):
         
-        x_data = self._extract_features(data)
-        return self.clf.predict(x_data)
+        x_data = self._extract_predict_features(data)
+        
+        return self.simple_clf.predict(x_data)
     
+    def _extract_predict_features(self, data):
+        
+        x_data = self._extract_features(data)
+        return x_data.loc[:,self._columns]
+        
     def _extract_features(self, data):
         
+        print('extracting feature')
         features = pd.DataFrame(columns=self._columns)
         bags = self._transformer.fit_transform(data)
-        for bag,i in zip(bags,bags.index):
-            df = pd.DataFrame(bag).T
-            df.index = [i]
+        for bag,bag_id in zip(bags,bags.index):
+            df = bag[['word','frequency']].T
+            df.columns = df.loc['word']
+            df = df.drop('word')
+            df.index = [bag_id]
             features = features.append(df)
         
+        # Perhaps returns the transposition of the table would be better
         return features.fillna(0)
         
     
@@ -337,12 +348,19 @@ class SearchTechnique(BaseClassifier):
             raise 'to calculate the number of iteration the class proportion \
                     must be calculated first'
      
-        self._iteration_limit = np.log2(self._max_class_group)
+        self._iteration_limit = math.ceil(np.log2(self._max_class_group))
     
-    def _get_random_list(self, num_elements):
+    def _get_random_list(self):
         
+        if(self._iteration_limit is None):
+            self._generate_iteration_limit()
+            
+        num_elements = self._iteration_limit
+        rand_list = list(range(num_elements))
         random.seed(self.random_state)
-        return [random.random() for _ in range(num_elements)]
+        random.shuffle(rand_list)
+        
+        return rand_list
         
     def _get_histogram(self):
         return pd.DataFrame([])
