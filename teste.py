@@ -35,7 +35,7 @@ class Test(object):
         
         time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[:,0]])
         print(time_series)
-        st = SearchTechnique(640,initial_sample_per_class=self.initial_sample)
+        st = SearchTechnique(640,initial_sample_per_class=self.initial_sample, random_state = 12)
         st._transformer._frequency_thereshold = threshold
         dfs = st.fit(time_series, labels)
         #return dfs
@@ -149,7 +149,7 @@ class Test(object):
                self.write_distribution(threshold)
                self.write_all_zipfslaw(threshold)
 
-        #for threshold in self.THRESHOLD: self.plot_distribution(threshold)
+        for threshold in self.THRESHOLD: self.plot_distribution(threshold)
         for threshold in self.THRESHOLD: self.plot_all_zipfslaw(threshold)
         for threshold in self.THRESHOLD: self.plot_zipfsLaw(threshold)
 
@@ -160,7 +160,9 @@ labels = df_train.iloc[:,-1]
 time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[:,0]])
 #print(time_series)
 st = SearchTechnique(29, random_state=32)
-dfs = st.fit(time_series, labels)
+st = st.fit(time_series, labels)
+
+print('\n\n\n Testing the dataset')
 
 df_test = pd.read_hdf('JapaneseVowels', key='test')
 labels = df_test.iloc[:,-1]
@@ -171,12 +173,13 @@ labels_pred = st.predict(time_series)
 
 acc = accuracy_score(labels.values, labels_pred)
 print(acc)
-
+'''
 '''
 path = 'results/initial_test/'
-test = Test('fisrt',path,15)
+test = Test('fisrt',path,2)
 test.run_test()
 
+'''
 path = 'results/initial_test/second_test/'
 test = Test('second',path,2)
 test.THRESHOLD = [2]

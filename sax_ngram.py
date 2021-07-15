@@ -85,7 +85,7 @@ class SaxNgram(_PanelToPanelTransformer):
         self._bin_symbols = floor(np.log2(self.alphabet_size)) + 1
         self._frequency_thereshold = 0
     
-    def transform(self, data):
+    def transform(self, data, verbose=False):
         '''
         Transforms a set of time series into a set of histograms(bag of words).
 
@@ -113,9 +113,17 @@ class SaxNgram(_PanelToPanelTransformer):
         # Variables
         histograms = pd.Series(index=data.index, dtype = object)
         
+        v = 0
         # Counting the words for each sample of the data
         for sample_id in data.index:
             sample = data[sample_id]
+            
+            v+=1
+            if(verbose):
+                aux = data.size//10
+                if(v>=aux):
+                    print('#',end='')
+                    v=0
             
             # Size of the sample (time series)
             series_length = sample.size
@@ -165,7 +173,7 @@ class SaxNgram(_PanelToPanelTransformer):
             
             # Group the histograms of all samples
             histograms[sample_id] = bag_of_bags
-        print('size of all bags: ', sys.getsizeof(bag_of_bags))
+        print('\nsize of all bags: ', sys.getsizeof(histograms))
         return histograms
     
     def remove_resolutions(self, resolutions):
@@ -202,10 +210,10 @@ class SaxNgram(_PanelToPanelTransformer):
                 bag_of_ngrams[ngram] = bag_of_ngrams.get(ngram,0) + 1
             
             resolution = '{} {}'.format(window_length, n)
-            bag_of_ngrams = pd.DataFrame.from_dict(bag_of_ngrams, orient='index')
+            bag_of_ngrams = pd.DataFrame.from_dict(bag_of_ngrams, orient='index', columns=['frequency'])
+            bag_of_ngrams.index.name = 'word'
             bag_of_ngrams = bag_of_ngrams.reset_index()
             bag_of_ngrams['resolution'] = resolution
-            bag_of_ngrams.columns = ['word','frequency','resolution']
             # TODO
             # First Paper - Experiments
             # (frequent words X resolution with frequent words X all words)

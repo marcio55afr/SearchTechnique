@@ -45,9 +45,9 @@ class SearchTechnique(BaseClassifier):
 
     def __init__(self,
                  max_series_length,
-                 min_window_length = 4,
-                 window_prop = .8,
-                 dimension_reduction_prop=1,
+                 min_window_length = 6,
+                 window_prop = .5,
+                 dimension_reduction_prop=.8,
                  alphabet_size=4,
                  initial_sample_per_class=2,
                  unbalanced_classes = True,
@@ -153,30 +153,28 @@ class SearchTechnique(BaseClassifier):
         iteration = -1
         while(True):
             iteration += 1
-
             samples_id = self._get_samples_id(classes, labels, seed = seed_list[iteration])
+            
             N = samples_id.size
-            print('\nTransforming the series..')
+            print('\n\n\n\n\t\tIteration: {}'.format(iteration))
+            print('sample size: {}'.format(N))
             self._transformer.show_resolution()
-            print('\nsample size: {}'.format(N))
-            print('samples id: ',samples_id)
 
             # Second Paper - technique ability
             # todo make the transformation multivariable!!!! important
-            bags = self._transformer.fit_transform(data.loc[samples_id,:])
-            dfs = pd.DataFrame([])
+            print('\nTransforming the series..')
+            bags = self._transformer.transform(data.loc[samples_id,:], verbose=True)
             
-            print('\nCalculating the tf of each word..\n')
+            print('\nCalculating the tf of each word..')
             i=0
+            dfs = pd.DataFrame([])
             for sample_id in samples_id:
                 # Second Paper - Algorithm speed up
                 # todo separate the words from the meta informations for speed up
-                df = pd.DataFrame(bags[sample_id])
+                df = bags[sample_id]
                 df['sample_id'] = sample_id
                 total = df.shape[0]
                 df['tf'] = df['frequency']/total
-                df.index.names = ['index']
-                df = df.reset_index().set_index(['sample_id','index'])
                 
                 # TODO
                 # First Paper - Algorithm speed up
@@ -184,16 +182,16 @@ class SearchTechnique(BaseClassifier):
                 dfs = pd.concat([dfs,df], axis=0, join='outer')
                 
                 i+=1
-            
-            print('\nBag of Words')
-            print(dfs[['word','frequency']])
-            print('\nCalculating the tf idf of each word..')
+
+            print('Calculating the tf idf of each word..')
             # First Paper - Experiments
             # TODO remove from N the 'documents' from the same class
             # Try to consider all the samples within the same class as the a same
             # document
             dfs['tf_idf'] = 0
-            docs_freqs = pd.Series(Counter(dfs['word']))
+            doc_freq = pd.Series(Counter(dfs['word']))
+            dfs = dfs.set_index('word')
+            dfs['doc_freq'] = doc_freq
             i=0
             i_max = samples_id.size
             for sample in samples_id:
@@ -201,21 +199,15 @@ class SearchTechnique(BaseClassifier):
                 if(i > (i_max/10)):
                     print('#',end=' ')
                     i -= i_max//10
-                
-                df = dfs.loc[sample].sort_values('word')
+
+                df = dfs[dfs.sample_id == sample]
                 tf = df['tf']
-                words = df['word']
-                
-                doc_freq = docs_freqs[words]
-                idf = np.log2(N/(doc_freq+1))
-                
-                dfs.loc[sample,'tf_idf'] = tf*idf
-            
+                idf = np.log2(N/(df['doc_freq']+1))                
+                dfs.loc[dfs.sample_id == sample,'tf_idf'] = tf*idf
+
             #-----------------------------------------------------------
             ######### break at the middle ############
-            '''if( samples_id.size == total_samples ):
-                print('\n\nAll samples were processed!')
-                break'''
+            
             #-----------------------------------------------------------
             
             self._accumulated_multiplier *= self._sample_multiplier
@@ -223,7 +215,7 @@ class SearchTechnique(BaseClassifier):
             dfs = dfs.reset_index()
             dfs = dfs.sort_values('tf_idf')
 
-            print('\nRemoving worst resolutions found in this iteration')
+            print('\\nnRemoving worst resolutions found in this iteration')
             # First Paper - Experiments
             # TODO compare half of parameters against half of the words
             # caution!
@@ -241,7 +233,7 @@ class SearchTechnique(BaseClassifier):
             # First Paper - Technique Version !!! important
             # TODO Vote system to down or up vote features
             # necessarily to up vote in other versions of ST
-            self._transformer.show_resolution()
+            print('Wors Resolutions\n', worst_resolutions.to_list())
             self._transformer.remove_resolutions(worst_resolutions)
             self._transformer.show_resolution()
 
@@ -251,54 +243,87 @@ class SearchTechnique(BaseClassifier):
             # (break at the end / break at the middle)
 
             ######### break at the end ############
-            if( samples_id.size == total_samples ):
+            '''if( samples_id.size == total_samples ):
                 print('\n\nAll samples were processed!')
-                break
+                break'''
             #-----------------------------------------------------------
-    
+            
+            if(samples_id.size == total_samples):
+                #return dfs
+                break
+            
+        print('\n\nFeature search completed!!\n\n')
+        
+        print('Starting the traing process of the Logistic Regression classifier\n')
         x_train = self._extract_features(data)
         self._columns = x_train.columns
-        
         self.simple_clf = LogisticRegression(solver='newton-cg',
                                              multi_class='multinomial',
                                              class_weight='balanced').fit(x_train, labels)
-
+        print('Logistic Regression model trained.\n')
         self._is_fitted = True
-
-        return dfs
+        
+        return self
         
     def predict_proba(self, data):
         
+        print('\nExtracting the features from this new data')
         x_data = self._extract_predict_features(data)
+        print('\nPredicting the data probability using the trained model\n')
         return self.simple_clf.predict_proba(x_data)
     
     def predict(self, data):
         
+        print('\nExtracting the features from this new data')
         x_data = self._extract_predict_features(data)
-        
+        print('\n\nPredicting the data using the trained model\n')
         return self.simple_clf.predict(x_data)
     
     def _extract_predict_features(self, data):
         
-        x_data = self._extract_features(data)
+        x_data = self._extract_features(data, True)
         return x_data.loc[:,self._columns]
         
-    def _extract_features(self, data):
+    def _extract_features(self, data, verbose=False):
         
-        print('extracting feature')
+        print('extracting features...\n')
         features = pd.DataFrame(columns=self._columns)
+        print('transforming the data...')
         bags = self._transformer.fit_transform(data)
-        for bag,bag_id in zip(bags,bags.index):
+
+        v=0
+        aux = bags.index.size//10
+        print('\nTranposing the table to turn each word a feature')
+        for bag_id in bags.index:
+            bag = bags[bag_id]
             df = bag[['word','frequency']].T
             df.columns = df.loc['word']
             df = df.drop('word')
             df.index = [bag_id]
+            df.index.name = 'index'
             features = features.append(df)
+            
+            v+=1
+            if(verbose):
+                if(v==aux):
+                    print('#',end='')
+                    v=0
         
         # Perhaps returns the transposition of the table would be better
         return features.fillna(0)
-        
     
+    def _extract_features_from_dfs(self, dfs):
+        
+        features = pd.DataFrame()
+        for sample_id in dfs['sample_id']:
+            df = dfs.loc[0,['word','frequency']].T
+            df.columns = df.loc['word']
+            df = df.drop('word')
+            df.index = [sample_id]
+            features = features.append(df)
+        
+        return features
+
     def _get_samples_id(self, classes, labels, seed=None):
 
         # Creating a list with the number of samples for each class to make
@@ -344,9 +369,11 @@ class SearchTechnique(BaseClassifier):
         
     def _generate_iteration_limit(self, labels, classes):
         
+        if(self.initial_sample_per_class < 2):
+            raise 'The smallest sample is 2 samples per classes of the data.'
+        
         if(self._max_class_group is None):
-            raise 'to calculate the number of iteration the class proportion \
-                    must be calculated first'
+            raise 'to calculate the number of iteration the class proportion must be calculated first'
      
         self._iteration_limit = math.ceil(np.log2(self._max_class_group))
     
@@ -356,10 +383,7 @@ class SearchTechnique(BaseClassifier):
             self._generate_iteration_limit()
             
         num_elements = self._iteration_limit
-        rand_list = list(range(num_elements))
-        random.seed(self.random_state)
-        random.shuffle(rand_list)
-        
+        rand_list = [random.randint(100,1000) for _ in range(num_elements)]        
         return rand_list
         
     def _get_histogram(self):
