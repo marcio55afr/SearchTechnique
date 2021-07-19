@@ -15,14 +15,15 @@ from search_technique import SearchTechnique
 class Test(object):
     
 
-    def __init__(self, name, path, initial_sample=2):
+    def __init__(self, name, path, dataset, ts_length, initial_sample=2):
         
         self.name = name
         self.THRESHOLD = [0,1,2,3]
-        self.threshold = 3
         self.PATH = path
-        CSV_PATH = self.PATH+'csv/'
-    
+        self.dataset = dataset
+        self.ts_length = ts_length
+        
+        CSV_PATH = self.PATH + 'csv/' + self.dataset
         self.EXTRACT_PATH = CSV_PATH+'extract_threshold_'
         self.DISTRIBUTION_PATH = CSV_PATH+'distribution_threshold_'
         self.RANK_PATH = CSV_PATH+'rank_threshold_'
@@ -30,14 +31,15 @@ class Test(object):
         self.initial_sample = initial_sample    
     
     def extract(self, threshold):
-        df_train = pd.read_hdf('AtrialFibrillation', key='train')
+        df_train = pd.read_hdf(self.dataset, key='train')
         labels = df_train.iloc[:,-1]
         
         time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[:,0]])
         print(time_series)
-        st = SearchTechnique(640,initial_sample_per_class=self.initial_sample, random_state = 12)
+        st = SearchTechnique(self.ts_length,initial_sample_per_class=self.initial_sample, random_state = 12)
         st._transformer._frequency_thereshold = threshold
         dfs = st.fit(time_series, labels)
+        dfs = dfs.rename(columns={'sample_id':'sample'})
         #return dfs
         dfs.to_csv(self.EXTRACT_PATH + str(threshold) + '.csv')
     
@@ -46,8 +48,9 @@ class Test(object):
         
         for sample_id in fit['sample'].unique():
             rows = fit['sample']== sample_id
-            fit.loc[rows,'freq_relative'] = fit['frequency']/fit['total']
-    
+            fit.loc[rows,'total'] = rows.sum()
+        fit['freq_relative'] = fit['frequency']/fit['total']
+            
         fit.to_csv(self.DISTRIBUTION_PATH + str(threshold) + '.csv')
         
     def plot_distribution(self, threshold):
@@ -63,8 +66,8 @@ class Test(object):
             ax = axs[x,y]
             rows = fit['sample']== sample_id
             ax.hist(fit.loc[rows,'freq_relative'],bins=200)
-            ax.set_xlim(0,0.004)
-            ax.set_ylim(0,500)
+            #ax.set_xlim(0,0.004)
+            #ax.set_ylim(0,500)
             ax.set_title('sample {}'.format(sample_id), )
         fig.supxlabel('word relative frequency')
         fig.supylabel('Frequency')
@@ -99,15 +102,15 @@ class Test(object):
             plt.plot(f['rank'],f['freq_relative'], label='sample '+str(sample_id))
             plt.xscale('log')
             plt.yscale('log')
-            plt.xlim(0.6,100000)
-            ylim0, ylim1 = plt.ylim()
-            ylim1 = 0.15
-            plt.ylim(0.00009, ylim1)
+            #plt.xlim(0.6,100000)
+            #ylim0, ylim1 = plt.ylim()
+            #ylim1 = 0.15
+            #plt.ylim(0.00009, ylim1)
         
-        plt.legend(title='"Documents"',
-                   loc='upper right',
-                   ncol=2,
-                   fontsize='x-small')
+        #plt.legend(title='"Documents"',
+        #           loc='upper right',
+        #           ncol=2,
+        #           fontsize='x-small')
         plt.title('{} test and threshold {}'.format(self.name,threshold))
         plt.xlabel('word rank')
         plt.ylabel('word frequency')
@@ -126,15 +129,15 @@ class Test(object):
         plt.plot(f['rank'],f['freq_relative'],'r+', label='sample '+str(sample_id))
         plt.xscale('log')
         plt.yscale('log')
-        plt.xlim(0.6,100000)
-        ylim0, ylim1 = plt.ylim()
-        ylim1 = 0.15
-        plt.ylim(0.00009, ylim1)
+        #plt.xlim(0.6,100000)
+        #ylim0, ylim1 = plt.ylim()
+        #ylim1 = 0.15
+        #plt.ylim(0.00009, ylim1)
         
-        plt.legend(title='"Document"', 
-                   loc='upper right',
-                   ncol=2,
-                   fontsize='x-small')
+        #plt.legend(title='"Document"', 
+        #           loc='upper right',
+        #           ncol=2,
+        #           fontsize='x-small')
         plt.title('Zipf\'s Law - {} test and threshold {}'.format(self.name,threshold))
         plt.xlabel('Word rank')
         plt.ylabel('Word Frequency')
@@ -145,21 +148,20 @@ class Test(object):
         
         for threshold in self.THRESHOLD:
             if(not os.path.isfile(self.EXTRACT_PATH + str(threshold) + '.csv')):
-               self.extract(threshold)
-               self.write_distribution(threshold)
-               self.write_all_zipfslaw(threshold)
+                self.extract(threshold)
+                self.write_distribution(threshold)
+                self.write_all_zipfslaw(threshold)
 
         for threshold in self.THRESHOLD: self.plot_distribution(threshold)
         for threshold in self.THRESHOLD: self.plot_all_zipfslaw(threshold)
         for threshold in self.THRESHOLD: self.plot_zipfsLaw(threshold)
-
 
 df_train = pd.read_hdf('JapaneseVowels', key='train')
 labels = df_train.iloc[:,-1]
 
 time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[:,0]])
 #print(time_series)
-st = SearchTechnique(29, random_state=32)
+st = SearchTechnique(640, random_state=32)
 st = st.fit(time_series, labels)
 
 print('\n\n\n Testing the dataset')
@@ -174,11 +176,16 @@ labels_pred = st.predict(time_series)
 acc = accuracy_score(labels.values, labels_pred)
 print(acc)
 '''
-'''
+
 path = 'results/initial_test/'
-test = Test('fisrt',path,2)
+test = Test('fisrt',path, 'JapaneseVowels', 29)
 test.run_test()
 
+path = 'results/initial_test/'
+test = Test('fisrt',path, 'AtrialFibrillation', 640)
+test.run_test()
+
+'''
 '''
 path = 'results/initial_test/second_test/'
 test = Test('second',path,2)

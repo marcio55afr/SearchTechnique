@@ -79,4 +79,10 @@ class NgramResolution(object):
 
         return window_lengths
                
+    def _resolution_teste(self):
+        
+        for col in self.resolutions_matrix.columns:
+            self.resolutions_matrix[col] = 0
+        
+        self.resolutions_matrix.iloc[0,0] = 1
                

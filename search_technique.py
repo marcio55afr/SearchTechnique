@@ -44,7 +44,7 @@ class SearchTechnique(BaseClassifier):
 
 
     def __init__(self,
-                 max_series_length,
+                 max_series_length = None,
                  min_window_length = 6,
                  window_prop = .5,
                  dimension_reduction_prop=.8,
@@ -60,7 +60,6 @@ class SearchTechnique(BaseClassifier):
         self.alphabet_size = alphabet_size
         self.initial_sample_per_class = initial_sample_per_class
         self.random_state = random_state
-        
         self.simple_clf = None
         
         # TODO
@@ -75,29 +74,7 @@ class SearchTechnique(BaseClassifier):
         #------------------------------------------------------------
         
         
-        # TODO
-        #-----------------------------------------------------------
-        # First Paper - Experiments 
-        # (window normalization X no window normalization)
-        
-        ######### normalization ############
-        self._transformer = SaxNgram(self.max_series_length,
-                                     self.min_window_length,
-                                     self.window_prop,
-                                     self.dimension_reduction_prop,
-                                     self.alphabet_size,
-                                     normalize = True)
-        
-        ######### non normalization ############
-        '''
-        self._transformer = SaxNgram(self.max_series_length,
-                                     self.min_window_length,
-                                     self.window_prop,
-                                     self.dimension_reduction_prop,
-                                     self.alphabet_size,
-                                     normalize = False)
-        '''
-        #-----------------------------------------------------------
+
         
         # TODO
         #-----------------------------------------------------------
@@ -120,6 +97,7 @@ class SearchTechnique(BaseClassifier):
         
         
         # Variables
+        self._transformer = None
         self._accumulated_multiplier = 1
         self._class_proportion = pd.Series()
         self._max_class_group = None
@@ -129,11 +107,46 @@ class SearchTechnique(BaseClassifier):
         
     def fit(self, data, labels):
         
+        # Check the data indexes
+        if(not data.index.is_unique):
+            index_ = range(data.shape[0])
+            data.index = index_
+            labels.index = index_
+        
         # Check the number of samples and labels
         total_samples,_ = data.shape
         total_labels = len(labels)
         if(total_samples != total_labels):
             raise 'The number of samples and labels must be the same'
+            
+        # Getting the max length Series
+        if(self.max_series_length is None):
+            self.max_series_length = self._get_max_length(data)
+        
+        
+                # TODO
+        #-----------------------------------------------------------
+        # First Paper - Experiments 
+        # (window normalization X no window normalization)
+        
+        ######### normalization ############
+        self._transformer = SaxNgram(self.max_series_length,
+                                     self.min_window_length,
+                                     self.window_prop,
+                                     self.dimension_reduction_prop,
+                                     self.alphabet_size,
+                                     normalize = True)
+        
+        ######### non normalization ############
+        '''
+        self._transformer = SaxNgram(self.max_series_length,
+                                     self.min_window_length,
+                                     self.window_prop,
+                                     self.dimension_reduction_prop,
+                                     self.alphabet_size,
+                                     normalize = False)
+        '''
+        #-----------------------------------------------------------
             
         
         ################ Initializating the iteration ####################
@@ -215,15 +228,13 @@ class SearchTechnique(BaseClassifier):
             dfs = dfs.reset_index()
             dfs = dfs.sort_values('tf_idf')
 
-            print('\\nnRemoving worst resolutions found in this iteration')
+            print('\n\nRemoving worst resolutions found in this iteration')
             # First Paper - Experiments
             # TODO compare half of parameters against half of the words
             # caution!
             # half of the best words could comprehend all the resolutions!
             resolutions = dfs[['resolution','tf_idf']].groupby('resolution').max()
             resolutions = resolutions.sort_values('tf_idf').index
-            #print('last set of resolutions:')
-            #print(last_resolutions)
 
             worst_resolutions = self._data_split(resolutions, self._resolution_prop)
             if(worst_resolutions.size == dfs['resolution'].unique().size):
@@ -267,12 +278,22 @@ class SearchTechnique(BaseClassifier):
         
     def predict_proba(self, data):
         
+        # Check the data indexes
+        if(not data.index.is_unique):
+            index_ = range(data.shape[0])
+            data.index = index_
+        
         print('\nExtracting the features from this new data')
         x_data = self._extract_predict_features(data)
         print('\nPredicting the data probability using the trained model\n')
         return self.simple_clf.predict_proba(x_data)
     
     def predict(self, data):
+        
+        # Check the data indexes
+        if(not data.index.is_unique):
+            index_ = range(data.shape[0])
+            data.index = index_
         
         print('\nExtracting the features from this new data')
         x_data = self._extract_predict_features(data)
@@ -282,9 +303,11 @@ class SearchTechnique(BaseClassifier):
     def _extract_predict_features(self, data):
         
         x_data = self._extract_features(data, True)
+        x_data = x_data.append(pd.DataFrame([], columns=self._columns)).fillna(0)
+        x_data.drop(x_data.index[-1])
         return x_data.loc[:,self._columns]
         
-    def _extract_features(self, data, verbose=False):
+    def _extract_features(self, data, verbose=True):
         
         print('extracting features...\n')
         features = pd.DataFrame(columns=self._columns)
@@ -323,6 +346,17 @@ class SearchTechnique(BaseClassifier):
             features = features.append(df)
         
         return features
+
+    def _get_max_length(self, data):
+        
+        max_length = 0
+        for col in data.columns:
+            for timeseries in data[col]:
+                if(timeseries.size > max_length):
+                    max_length = timeseries.size
+        
+        return max_length
+        
 
     def _get_samples_id(self, classes, labels, seed=None):
 
@@ -369,13 +403,13 @@ class SearchTechnique(BaseClassifier):
         
     def _generate_iteration_limit(self, labels, classes):
         
-        if(self.initial_sample_per_class < 2):
+        if(self.initial_sample_per_class < 1):
             raise 'The smallest sample is 2 samples per classes of the data.'
         
         if(self._max_class_group is None):
             raise 'to calculate the number of iteration the class proportion must be calculated first'
      
-        self._iteration_limit = math.ceil(np.log2(self._max_class_group))
+        self._iteration_limit = math.ceil(np.log2(self._max_class_group)) + 2
     
     def _get_random_list(self):
         
