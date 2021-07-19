@@ -17,7 +17,7 @@ class NgramResolution(object):
         window_lengths_list = self._generate_window_lengths(self.min_window_length,
                                                             self.max_window_length)
                 
-        self.resolutions_matrix = pd.DataFrame(-1,
+        self.resolutions_matrix = pd.DataFrame(0,
                                               index=np.arange(1,self.max_ngrams),
                                               columns = window_lengths_list,
                                               dtype=int )
@@ -44,6 +44,9 @@ class NgramResolution(object):
         return [windows[0]]
     
     def remove(self, resolutions):
+        
+        if(self.resolutions_matrix.values.sum() <= 2):
+            return
         
         for resolution in resolutions:
             window_length, ngram_length = resolution.split(' ')

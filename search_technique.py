@@ -234,18 +234,31 @@ class SearchTechnique(BaseClassifier):
             # caution!
             # half of the best words could comprehend all the resolutions!
             resolutions = dfs[['resolution','tf_idf']].groupby('resolution').max()
-            resolutions = resolutions.sort_values('tf_idf').index
-
-            worst_resolutions = self._data_split(resolutions, self._resolution_prop)
-            if(worst_resolutions.size == dfs['resolution'].unique().size):
+            
+            # TODO
+            #-----------------------------------------------------------
+            # First Paper - Experiments
+            # remove (worst resolutions/ best resolutions / random resolutions)
+            
+            ######### worst resolutions ############
+            '''resolutions = resolutions.sort_values('tf_idf').index'''
+            ######### best resolutions ############
+            resolutions = resolutions.sort_values('tf_idf', ascending=False).index
+            ######### random resolutions ############
+            '''resolutions = resolutions.sort_values('tf_idf').index'''
+            
+            #-----------------------------------------------------------
+            
+            resolutions_to_remove = self._data_split(resolutions, self._resolution_prop)
+            if(resolutions_to_remove.size == dfs['resolution'].unique().size):
                 raise 'The worst resolutions comprehense all the resolution \
                         isntead of a proportion of it'
 
             # First Paper - Technique Version !!! important
             # TODO Vote system to down or up vote features
             # necessarily to up vote in other versions of ST
-            print('Wors Resolutions\n', worst_resolutions.to_list())
-            self._transformer.remove_resolutions(worst_resolutions)
+            print('Wors Resolutions\n', resolutions_to_remove.to_list())
+            self._transformer.remove_resolutions(resolutions_to_remove)
             self._transformer.show_resolution()
 
             # TODO

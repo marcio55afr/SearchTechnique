@@ -41,7 +41,7 @@ tasks = [TSCTask(target="target") for _ in range(len(datasets))]
 
 # Specify learning strategies
 strategies = [
-    TSCStrategy(SearchTechnique(), name="st"),
+    TSCStrategy(SearchTechnique(), name="st_RemoveBestResolutions"),
     #TSCStrategy(TemporalDictionaryEnsemble(min_window=6, n_jobs=-1), name="TDE")
 ]
 
