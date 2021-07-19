@@ -4,7 +4,9 @@
 Cricket
 JapaneseVowels
 /*.csv
-/results/
+results/
+datasets/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
