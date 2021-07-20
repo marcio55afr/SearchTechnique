@@ -161,7 +161,7 @@ labels = df_train.iloc[:,-1]
 
 time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[:,0]])
 #print(time_series)
-st = SearchTechnique(640, random_state=32)
+st = SearchTechnique(random_state=31)
 st = st.fit(time_series, labels)
 
 print('\n\n\n Testing the dataset')

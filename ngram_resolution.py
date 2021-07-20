@@ -2,29 +2,32 @@
 
 import pandas as pd
 import numpy as np
-
+from math import ceil
 
 class NgramResolution(object):
     
-    def __init__(self, max_series_length, min_window_length, window_prop):
+    def __init__(self, min_window_size, max_window_size):
         
-        self.min_window_length = min_window_length
-        self.window_prop = window_prop
-        self.max_window_length = int(max_series_length*window_prop)
-        self.max_ngrams = self.max_window_length//min_window_length
+        if( max_window_size < min_window_size ):
+            raise 'data with series length too short'
+            
+        self.min_window_size = min_window_size
+        self.max_window_size = max_window_size
+        #self.window_prop = window_prop
+        self.max_ngrams = max_window_size//min_window_size
 
-
-        window_lengths_list = self._generate_window_lengths(self.min_window_length,
-                                                            self.max_window_length)
+            
+        windows_diff = ceil((max_window_size - min_window_size)/10)
+        window_sizes = np.arange(min_window_size, max_window_size+1, windows_diff)
                 
         self.resolutions_matrix = pd.DataFrame(0,
-                                              index=np.arange(1,self.max_ngrams),
-                                              columns = window_lengths_list,
-                                              dtype=int )
+                                              index=np.arange(1,self.max_ngrams+1),
+                                              columns = window_sizes,
+                                              dtype=bool)
         
-        for window in window_lengths_list:
-            num_ngrams_max = (self.max_window_length//window)
-            self.resolutions_matrix.loc[0:num_ngrams_max,window] = 1
+        for window in window_sizes:
+            ngram = (self.max_window_size//window)
+            self.resolutions_matrix.loc[0:ngram,window] = True
             
     def get_ngrams_remaining(self, window_length):
         
@@ -33,7 +36,9 @@ class NgramResolution(object):
     
     def get_window_lengths_list(self, series_length):
         
-        windows = self.resolutions_matrix.columns
+        aux = self.resolutions_matrix.sum()
+        windows = aux[aux>=1].index.to_list()
+        return windows
         mask = windows <= series_length*self.window_prop
         
         selected_windows = windows[mask].to_list()

@@ -105,6 +105,14 @@ class SearchTechnique(BaseClassifier):
         self._random_list = []
         self._columns = None
         
+        capabilities = {
+            "multivariate": False,
+            "unequal_length": False,
+            "missing_values": False,
+            "train_estimate": False,
+            "contractable": False,
+        }
+        
     def fit(self, data, labels):
         
         # Check the data indexes
@@ -114,14 +122,15 @@ class SearchTechnique(BaseClassifier):
             labels.index = index_
         
         # Check the number of samples and labels
-        total_samples,_ = data.shape
-        total_labels = len(labels)
-        if(total_samples != total_labels):
+        data_size,_ = data.shape
+        num_labels = len(labels)
+        if(data_size != num_labels):
             raise 'The number of samples and labels must be the same'
             
         # Getting the max length Series
         if(self.max_series_length is None):
-            self.max_series_length = self._get_max_length(data)
+            # All sample with same length
+            self.max_series_length = data.iloc[0,0].size
         
         
                 # TODO
@@ -131,10 +140,10 @@ class SearchTechnique(BaseClassifier):
         
         ######### normalization ############
         self._transformer = SaxNgram(self.max_series_length,
-                                     self.min_window_length,
-                                     self.window_prop,
-                                     self.dimension_reduction_prop,
-                                     self.alphabet_size,
+                                     #self.min_window_length,
+                                     #self.window_prop,
+                                     #self.dimension_reduction_prop,
+                                     #self.alphabet_size,
                                      normalize = True)
         
         ######### non normalization ############
@@ -161,16 +170,18 @@ class SearchTechnique(BaseClassifier):
         
         # Generating a list of random to sample the data
         seed_list = self._get_random_list()
+        print('seed_list',seed_list)
         
         ##################################################################
         iteration = -1
         while(True):
             iteration += 1
-            samples_id = self._get_samples_id(classes, labels, seed = seed_list[iteration])
+            samples_id, samples_label = self._get_samples_id(classes, labels, seed = seed_list[iteration])
             
-            N = samples_id.size
+            samples_size = samples_id.size
             print('\n\n\n\n\t\tIteration: {}'.format(iteration))
-            print('sample size: {}'.format(N))
+            print('sample size: {}'.format(samples_size))
+            print('samples_id', samples_id)
             self._transformer.show_resolution()
 
             # Second Paper - technique ability
@@ -181,13 +192,26 @@ class SearchTechnique(BaseClassifier):
             print('\nCalculating the tf of each word..')
             i=0
             dfs = pd.DataFrame([])
-            for sample_id in samples_id:
+            for c in classes:
+                samples_class_id = samples_label[samples_label==c].index
                 # Second Paper - Algorithm speed up
                 # todo separate the words from the meta informations for speed up
-                df = bags[sample_id]
-                df['sample_id'] = sample_id
-                total = df.shape[0]
-                df['tf'] = df['frequency']/total
+                #df = bags[samples_id]
+                #df['sample_id'] = sample_id
+                df = pd.DataFrame([])
+                resolutions = pd.Series([])
+                for bag in bags[samples_class_id]:
+                    bag = bag.set_index('word')
+                    resolutions = resolutions.append(bag.resolution)
+                    df = df.append(bag[['frequency']].T)
+                df = df.sum().to_frame()
+                n_word = df.shape[0]
+                df.columns = ['frequency']
+                df['resolution'] = resolutions.iloc[~resolutions.index.duplicated()]
+                df['tf'] = df['frequency']/n_word
+                df['document'] = c
+                if(not df.index.is_unique):
+                    raise 'duplicated words detected inside the same class'
                 
                 # TODO
                 # First Paper - Algorithm speed up
@@ -202,21 +226,12 @@ class SearchTechnique(BaseClassifier):
             # Try to consider all the samples within the same class as the a same
             # document
             dfs['tf_idf'] = 0
-            doc_freq = pd.Series(Counter(dfs['word']))
-            dfs = dfs.set_index('word')
+            doc_freq = pd.Series(Counter(dfs.index))
             dfs['doc_freq'] = doc_freq
-            i=0
-            i_max = samples_id.size
-            for sample in samples_id:
-                i+=1
-                if(i > (i_max/10)):
-                    print('#',end=' ')
-                    i -= i_max//10
-
-                df = dfs[dfs.sample_id == sample]
-                tf = df['tf']
-                idf = np.log2(N/(df['doc_freq']+1))                
-                dfs.loc[dfs.sample_id == sample,'tf_idf'] = tf*idf
+            
+            print('Calculating tf-idf by class')
+            idf = np.log(num_labels/(dfs['doc_freq']+1))
+            dfs['tf_idf'] = dfs['tf']*idf
 
             #-----------------------------------------------------------
             ######### break at the middle ############
@@ -241,11 +256,11 @@ class SearchTechnique(BaseClassifier):
             # remove (worst resolutions/ best resolutions / random resolutions)
             
             ######### worst resolutions ############
-            '''resolutions = resolutions.sort_values('tf_idf').index'''
+            resolutions = resolutions.sort_values('tf_idf').index
             ######### best resolutions ############
-            resolutions = resolutions.sort_values('tf_idf', ascending=False).index
+            '''resolutions = resolutions.sort_values('tf_idf', ascending=False).index'''
             ######### random resolutions ############
-            '''resolutions = resolutions.sort_values('tf_idf').index'''
+            '''resolutions = resolutions.index.to_series().sample(frac=1)'''
             
             #-----------------------------------------------------------
             
@@ -272,9 +287,9 @@ class SearchTechnique(BaseClassifier):
                 break'''
             #-----------------------------------------------------------
             
-            if(samples_id.size == total_samples):
-                #return dfs
+            if(samples_size == data_size):
                 break
+                #return dfs
             
         print('\n\nFeature search completed!!\n\n')
         
@@ -371,7 +386,7 @@ class SearchTechnique(BaseClassifier):
         return max_length
         
 
-    def _get_samples_id(self, classes, labels, seed=None):
+    def _get_samples_id(self, classes, data_labels, seed=None):
 
         # Creating a list with the number of samples for each class to make
         # the sample
@@ -383,19 +398,19 @@ class SearchTechnique(BaseClassifier):
             sample_sizes = [s_size]*classes.size
         
         # Sampling the data based on each class with reproducibility
-        samples_id = pd.Series([])
+        samples_label =  pd.Series([])
         for c,sample_size in zip(classes, sample_sizes):
-            index = pd.Series(labels[labels==c].index)
+            index = pd.Series(data_labels[data_labels==c].index)
             # if the sample is greater than the number of samples,
             # just take all the samples available
             if(sample_size > index.size):
-                samples_id = samples_id.append(index)
+                samples_label = samples_label.append(data_labels[index])
                 continue
             
             s = index.sample(sample_size, random_state=seed)
-            samples_id = samples_id.append(s)
+            samples_label = samples_label.append(data_labels[s])
         
-        return samples_id
+        return samples_label.index, samples_label
     
     def _generate_class_proportion(self, labels, classes, rewrite = False):
         
@@ -430,6 +445,7 @@ class SearchTechnique(BaseClassifier):
             self._generate_iteration_limit()
             
         num_elements = self._iteration_limit
+        random.seed(self.random_state)
         rand_list = [random.randint(100,1000) for _ in range(num_elements)]        
         return rand_list
         

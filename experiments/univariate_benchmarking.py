@@ -14,7 +14,11 @@ from sktime.benchmarking.results import HDDResults
 from sktime.benchmarking.strategies import TSCStrategy
 from sktime.benchmarking.tasks import TSCTask
 from sktime.classification.dictionary_based import (
-    ContractableBOSS
+    ContractableBOSS,
+    WEASEL
+)
+from sktime.classification.shapelet_based import (
+    MrSEQLClassifier
 )
 from sktime.series_as_features.model_selection import PresplitFilesCV
 import time
@@ -41,8 +45,8 @@ tasks = [TSCTask(target="target") for _ in range(len(datasets))]
 
 # Specify learning strategies
 strategies = [
-    TSCStrategy(SearchTechnique(), name="st_RemoveBestResolutions"),
-    #TSCStrategy(TemporalDictionaryEnsemble(min_window=6, n_jobs=-1), name="TDE")
+    TSCStrategy(SearchTechnique(), name="st_TfidfPerClass_RemoveWorstResolutions"),
+    #TSCStrategy(ContractableBOSS(), name="CBOSS")
 ]
 
 

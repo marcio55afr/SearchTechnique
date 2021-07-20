@@ -4,6 +4,7 @@
 from sktime.transformations.base import _PanelToPanelTransformer
 from sktime.utils.validation.panel import check_X
 from sktime.transformations.panel.dictionary_based import PAA
+from sktime.transformations.panel.dictionary_based import SAX
 
 from ngram_resolution import NgramResolution
 
@@ -62,28 +63,39 @@ class SaxNgram(_PanelToPanelTransformer):
     '''
 
     def __init__(self,
-                 max_series_length,
-                 min_window_length,
-                 window_prop,
-                 dimension_reduction_prop,
-                 alphabet_size,
+                 #max_series_length,
+                 #min_window_length,
+                 #window_prop,
+                 #dimension_reduction_prop,
+                 #alphabet_size,
+                 series_length,
                  normalize=True):
         # Attributes
-        self.max_series_length = max_series_length
-        self.min_window_length = min_window_length
-        self.window_prop = window_prop
-        self.dimension_reduction_prop = dimension_reduction_prop
-        self.alphabet_size = alphabet_size
+        self.max_window_size = series_length//2
+        self.min_window_size = 4
+        #self.window_prop = window_prop
+        #self.dimension_reduction_prop = dimension_reduction_prop
+        self.alphabet_size = 4
+        self.series_length = series_length
         self.normalize = normalize
-        self.resolution = NgramResolution(self.max_series_length,
-                                          self.min_window_length,
-                                          self.window_prop)
+        self.resolution = NgramResolution(self.min_window_size,
+                                          self.max_window_size)
         
         # Local variables
         self._breakpoints = None
         self._alphabet = self._generate_alphabet()
         self._n_bits = ceil(np.log2(self.alphabet_size)) # +1 to represent the space symbol within ngram words
         self._frequency_thereshold = 0
+        
+    def transform_test(self, data, verbose=True):
+        
+        data = check_X(data, enforce_univariate=True, coerce_to_numpy=True)
+        
+        
+        
+                
+        
+        
     
     def transform(self, data, verbose=True):
         '''
@@ -153,7 +165,7 @@ class SaxNgram(_PanelToPanelTransformer):
                 windows_df[0] = [pd.Series(x, dtype=np.float32).fillna(0) for x in windows]
                 
                 # Calculating the word length regarded by the window length
-                word_length = int(window_length * self.dimension_reduction_prop)
+                word_length = window_length #* self.dimension_reduction_prop)
                 
                 # Approximating each window and reducing its dimension
                 paa = PAA(num_intervals=word_length)
