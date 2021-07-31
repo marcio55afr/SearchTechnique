@@ -3,6 +3,7 @@ import math
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
 from sktime.classification.base import BaseClassifier
 
 from sax_ngram import SaxNgram
@@ -47,9 +48,9 @@ class SearchTechnique(BaseClassifier):
                  max_series_length = None,
                  min_window_length = 6,
                  window_prop = .5,
-                 dimension_reduction_prop=.8,
+                 dimension_reduction_prop=1,
                  alphabet_size=4,
-                 initial_sample_per_class=2,
+                 initial_sample_per_class=300,
                  unbalanced_classes = True,
                  random_state=None):
         
@@ -105,6 +106,10 @@ class SearchTechnique(BaseClassifier):
         self._random_list = []
         self._columns = None
         
+        ## teste
+        self._num_test_words = 0
+        
+        
         capabilities = {
             "multivariate": False,
             "unequal_length": False,
@@ -113,7 +118,7 @@ class SearchTechnique(BaseClassifier):
             "contractable": False,
         }
         
-    def fit(self, data, labels):
+    def fit(self, data, labels, n, window):
         
         # Check the data indexes
         if(not data.index.is_unique):
@@ -172,6 +177,8 @@ class SearchTechnique(BaseClassifier):
         seed_list = self._get_random_list()
         print('seed_list',seed_list)
         
+        self._transformer.resolution._resolution_teste(n, window)
+        
         ##################################################################
         iteration = -1
         while(True):
@@ -198,25 +205,22 @@ class SearchTechnique(BaseClassifier):
                 # todo separate the words from the meta informations for speed up
                 #df = bags[samples_id]
                 #df['sample_id'] = sample_id
-                df = pd.DataFrame([])
-                resolutions = pd.Series([])
-                for bag in bags[samples_class_id]:
-                    bag = bag.set_index('word')
-                    resolutions = resolutions.append(bag.resolution)
-                    df = df.append(bag[['frequency']].T)
-                df = df.sum().to_frame()
-                n_word = df.shape[0]
-                df.columns = ['frequency']
-                df['resolution'] = resolutions.iloc[~resolutions.index.duplicated()]
-                df['tf'] = df['frequency']/n_word
-                df['document'] = c
+                aux = bags.set_index('sample_id').loc[samples_class_id]
+                df = aux.reset_index()
+                resolutions = aux[['word', 'resolution']].groupby('word').head(1).set_index('word')
+                df = aux.groupby('word').sum()
+
+                df['resolution'] = resolutions
+                df['label'] = c
+                tf = df['frequency']/df.shape[0]
+                df['tf'] = np.log( 1 + tf )
                 if(not df.index.is_unique):
                     raise 'duplicated words detected inside the same class'
                 
                 # TODO
                 # First Paper - Algorithm speed up
                 # concat or append?
-                dfs = pd.concat([dfs,df], axis=0, join='outer')
+                dfs = dfs.append(df)
                 
                 i+=1
 
@@ -230,8 +234,44 @@ class SearchTechnique(BaseClassifier):
             dfs['doc_freq'] = doc_freq
             
             print('Calculating tf-idf by class')
-            idf = np.log(num_labels/(dfs['doc_freq']+1))
+            idf = np.log( classes.size/dfs['doc_freq'] )
             dfs['tf_idf'] = dfs['tf']*idf
+
+            
+            word_rank = dfs['frequency'].groupby('word').max()
+            
+            mean = word_rank.mean()
+            #std = word_rank.std()
+            
+            #relevant_words = word_rank[word_rank > 7]
+            
+
+            ids = pd.Series(bags.sample_id.unique())
+            bags = bags.set_index('word')
+            #bags = bags.loc[ relevant_words.index ]
+            
+            x_train = pd.pivot_table(bags,
+                                     index=['sample_id'],
+                                     columns=['word'],
+                                     values=['frequency'])
+            x_train = x_train['frequency']
+            sample_mask = ~ids.isin(x_train.index)
+            x_train = x_train.append(pd.DataFrame(index=ids[sample_mask]))
+            x_train = x_train.fillna(0)
+            
+            
+            self._columns = x_train.columns
+            self.simple_clf = KNeighborsClassifier(n_neighbors=5).fit(x_train, labels)
+            '''self.simple_clf = LogisticRegression(solver='newton-cg',
+                                                 multi_class='multinomial',
+                                                 class_weight='balanced').fit(x_train, labels)'''
+            print('Logistic Regression model trained.\n')
+            self._is_fitted = True
+            
+            return self
+            
+            
+            
 
             #-----------------------------------------------------------
             ######### break at the middle ############
@@ -248,7 +288,7 @@ class SearchTechnique(BaseClassifier):
             # TODO compare half of parameters against half of the words
             # caution!
             # half of the best words could comprehend all the resolutions!
-            resolutions = dfs[['resolution','tf_idf']].groupby('resolution').max()
+            resolutions = dfs[['resolution','tf_idf']].groupby('resolution').mean()
             
             # TODO
             #-----------------------------------------------------------
@@ -256,9 +296,9 @@ class SearchTechnique(BaseClassifier):
             # remove (worst resolutions/ best resolutions / random resolutions)
             
             ######### worst resolutions ############
-            resolutions = resolutions.sort_values('tf_idf').index
+            '''resolutions = resolutions.sort_values('tf_idf').index'''
             ######### best resolutions ############
-            '''resolutions = resolutions.sort_values('tf_idf', ascending=False).index'''
+            resolutions = resolutions.sort_values('tf_idf', ascending=False).index
             ######### random resolutions ############
             '''resolutions = resolutions.index.to_series().sample(frac=1)'''
             
@@ -272,9 +312,8 @@ class SearchTechnique(BaseClassifier):
             # First Paper - Technique Version !!! important
             # TODO Vote system to down or up vote features
             # necessarily to up vote in other versions of ST
-            print('Wors Resolutions\n', resolutions_to_remove.to_list())
-            self._transformer.remove_resolutions(resolutions_to_remove)
-            self._transformer.show_resolution()
+            print('Resolutions to remove\n', resolutions_to_remove.to_list())
+            resolutions_remains = self._transformer.remove_resolutions(resolutions_to_remove)
 
             # TODO
             #-----------------------------------------------------------
@@ -287,7 +326,7 @@ class SearchTechnique(BaseClassifier):
                 break'''
             #-----------------------------------------------------------
             
-            if(samples_size == data_size):
+            if((samples_size == data_size) or not resolutions_remains):
                 break
                 #return dfs
             
@@ -324,7 +363,7 @@ class SearchTechnique(BaseClassifier):
             data.index = index_
         
         print('\nExtracting the features from this new data')
-        x_data = self._extract_predict_features(data)
+        x_data = self._extract_features(data)
         print('\n\nPredicting the data using the trained model\n')
         return self.simple_clf.predict(x_data)
     
@@ -337,14 +376,32 @@ class SearchTechnique(BaseClassifier):
         
     def _extract_features(self, data, verbose=True):
         
-        print('extracting features...\n')
-        features = pd.DataFrame(columns=self._columns)
         print('transforming the data...')
         bags = self._transformer.fit_transform(data)
-
+        print('extracting features...\n')
+        words = bags.word
+        ids = pd.Series(bags.sample_id.unique())
+        bags = bags.set_index('word')
+        
+        mask = self._columns.isin(words)
+        self._num_test_words = mask.sum()
+        bags = bags.loc[ self._columns[mask] ]
+        
+        print('\nTranposing the table to turn each word a feature')
+        features = pd.pivot_table( bags[['sample_id','frequency']], index=['sample_id'], columns=['word'] )
+        if(not features.empty):
+            features = features['frequency']
+        sample_mask = ~ids.isin(features.index)
+        features = features.append(pd.DataFrame(index=ids[sample_mask]))
+        features[ self._columns[~mask] ] = 0
+        
+        return features.fillna(0)
+        
         v=0
         aux = bags.index.size//10
         print('\nTranposing the table to turn each word a feature')
+        pd.pivot_table( bags[['sample_id','frequency']], index=['sample_id'], columns=['word'] )
+        
         for bag_id in bags.index:
             bag = bags[bag_id]
             df = bag[['word','frequency']].T

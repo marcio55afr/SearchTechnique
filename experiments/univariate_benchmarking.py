@@ -45,8 +45,8 @@ tasks = [TSCTask(target="target") for _ in range(len(datasets))]
 
 # Specify learning strategies
 strategies = [
-    TSCStrategy(SearchTechnique(), name="st_TfidfPerClass_RemoveWorstResolutions"),
-    #TSCStrategy(ContractableBOSS(), name="CBOSS")
+    #TSCStrategy(SearchTechnique(), name="st_MeanTfidfPerClass_4r_RemoveBestResolutions"),
+    TSCStrategy(ContractableBOSS(), name="CBOSS")
 ]
 
 

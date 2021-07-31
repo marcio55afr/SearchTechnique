@@ -6,7 +6,7 @@ JapaneseVowels
 /*.csv
 results/
 datasets/
-
+experiments/tf-idf_significance
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -123,7 +123,7 @@ class SaxNgram(_PanelToPanelTransformer):
         self._breakpoints = self._generate_breakpoints(data)
         
         # Variables
-        histograms = pd.Series(index=data.index, dtype = object)
+        bag_of_bags = pd.DataFrame()
         
         v = 0
         # Counting the words for each sample of the data
@@ -143,7 +143,7 @@ class SaxNgram(_PanelToPanelTransformer):
             series_length = sample.size
             
             # A Series of bag of words with all resolutions
-            bag_of_bags = pd.DataFrame()
+            bag_of_bags_aux = pd.DataFrame()
             
             # Multiple resolutions using various windows lenghts
             window_lengths = self.resolution.get_window_lengths_list(series_length)
@@ -168,8 +168,8 @@ class SaxNgram(_PanelToPanelTransformer):
                 word_length = window_length #* self.dimension_reduction_prop)
                 
                 # Approximating each window and reducing its dimension
-                paa = PAA(num_intervals=word_length)
-                windows_appr = paa.fit_transform(windows_df)
+                #paa = PAA(num_intervals=word_length)
+                windows_appr = windows_df #paa.fit_transform(windows_df)
                 
                 # Discretizing each window into a word
                 words = windows_appr[0].apply(self._generate_word)
@@ -178,21 +178,22 @@ class SaxNgram(_PanelToPanelTransformer):
                 # todo Optimizes to a array of string then use Counter to make a dictionary
                 # Counting the frequency of each n-gram for each window length
                 ngram_word_frequency = self._get_ngrams_word_count(words, word_length, window_length)
-                bag_of_bags = bag_of_bags.append(ngram_word_frequency, ignore_index=True)
+                bag_of_bags_aux = bag_of_bags_aux.append(ngram_word_frequency, ignore_index=True)
             
             
             # verify if all windows and all ngram only transform
             # a timeseries into features non-frequenty 
-            if(not bag_of_bags.size):
+            if(not bag_of_bags_aux.size):
                 raise 'A sample was not able to be discretized. The remmaining resolutions produces only non-frequent words or the variable _frequency_thereshold is too high.'
             
             # Group the histograms of all samples
-            histograms[sample_id] = bag_of_bags
-        print('\nsize of all bags: ', sys.getsizeof(histograms))
-        return histograms
+            bag_of_bags_aux['sample_id'] = sample_id
+            bag_of_bags = bag_of_bags.append(bag_of_bags_aux, ignore_index=True)
+        print('\nsize of all bags: ', sys.getsizeof(bag_of_bags))
+        return bag_of_bags
     
     def remove_resolutions(self, resolutions):
-        self.resolution.remove(resolutions)
+        return self.resolution.remove(resolutions)
     
     def show_resolution(self):
         self.resolution.show()

@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from sktime.transformations.panel.dictionary_based import SAX, SFA, PAA
 from sktime.utils.validation.panel import check_X
+from sktime.benchmarking.data import UEADataset
 from sklearn.metrics import accuracy_score
 import scipy.stats
 import matplotlib.pyplot as plt
@@ -156,25 +157,73 @@ class Test(object):
         for threshold in self.THRESHOLD: self.plot_all_zipfslaw(threshold)
         for threshold in self.THRESHOLD: self.plot_zipfsLaw(threshold)
 
-df_train = pd.read_hdf('JapaneseVowels', key='train')
+
+resolutions = {
+     4: [1,2,3,4,5,6,7],
+     7: [1,2,3,4],
+    10: [1,2,3],
+    14: [1,2],
+    16: [1],
+    19: [1],
+    22: [1],
+    25: [1],
+    28: [1]
+    }
+
+resolution_matrix = pd.DataFrame( False, columns=resolutions.keys(), index=np.arange(7)+1 )
+test_word_matrix = pd.DataFrame( False, columns=resolutions.keys(), index=np.arange(7)+1 )
+
+for window, ngrams in resolutions.items():
+    for n in ngrams:
+        DATA_PATH = os.path.join(os.path.abspath(os.getcwd()), "experiments/datasets/univariate/")
+        df = UEADataset(path=DATA_PATH, name='SyntheticControl').load()
+        df['index'] = range(df.shape[0])
+        
+        
+        df_train = df.loc['train'].set_index('index')
+        labels = df_train.iloc[:,-1]
+        
+        time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[:,0]])
+        #print(time_series)
+        st = SearchTechnique(random_state=31)
+        st = st.fit(time_series, labels, n, window)
+        
+        print('\n\n\n Testing the dataset')
+        
+        df_test = df.loc['test'].set_index('index')
+        labels = df_test.iloc[:,-1]
+        time_series =  pd.DataFrame([[ts.values] for ts in df_test.iloc[:,0]])
+        time_series.index = df_test.index
+        #print(time_series)
+        labels_pred = st.predict(time_series)
+        
+        test_word_matrix.loc[n,window] = st._num_test_words
+        
+        print(st._num_test_words)
+        
+        acc = accuracy_score(labels.values, labels_pred)
+        print(window, n, acc)
+        resolution_matrix.loc[n, window] = acc
+
+        
+        
+'''
+DATA_PATH = os.path.join(os.path.abspath(os.getcwd()), "experiments/datasets/univariate/")
+df = UEADataset(path=DATA_PATH, name='SyntheticControl').load()
+df['index'] = range(df.shape[0])
+
+
+df_train = df.loc['train'].set_index('index')
 labels = df_train.iloc[:,-1]
 
 time_series =  pd.DataFrame([[ts.values] for ts in df_train.iloc[:,0]])
 #print(time_series)
 st = SearchTechnique(random_state=31)
-st = st.fit(time_series, labels)
+word_summary = st.fit(time_series, labels)
+word_summary.to_csv('experiments/tf-idf_significance/word_summary.csv')
+'''  
+        
 
-print('\n\n\n Testing the dataset')
-
-df_test = pd.read_hdf('JapaneseVowels', key='test')
-labels = df_test.iloc[:,-1]
-time_series =  pd.DataFrame([[ts.values] for ts in df_test.iloc[:,0]])
-time_series.index = df_test.index
-#print(time_series)
-labels_pred = st.predict(time_series)
-
-acc = accuracy_score(labels.values, labels_pred)
-print(acc)
 '''
 
 path = 'results/initial_test/'

@@ -50,15 +50,18 @@ class NgramResolution(object):
     
     def remove(self, resolutions):
         
-        if(self.resolutions_matrix.values.sum() <= 2):
-            return
+        if(self.resolutions_matrix.values.sum() <= 4):
+            return False
         
         for resolution in resolutions:
             window_length, ngram_length = resolution.split(' ')
             window_length = int( window_length)
             ngram_length = int(ngram_length)
             self.resolutions_matrix.loc[ngram_length, window_length] = 0
-            
+            if(self.resolutions_matrix.values.sum() <= 4):
+                return False
+        
+        return True
     def show(self):
         
         print('\nResolution Matrix')
@@ -87,10 +90,11 @@ class NgramResolution(object):
 
         return window_lengths
                
-    def _resolution_teste(self):
+    def _resolution_teste(self, n, window):
         
         for col in self.resolutions_matrix.columns:
-            self.resolutions_matrix[col] = 0
+            self.resolutions_matrix[col] = False
         
-        self.resolutions_matrix.iloc[0,0] = 1
+        self.resolutions_matrix.loc[n, window] = 1
+        #self.resolutions_matrix.loc[2, 4] = 1
                
